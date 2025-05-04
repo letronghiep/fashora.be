@@ -7,6 +7,7 @@ const dev = {
     port: process.env.DEV_DB_PORT,
     name: process.env.DEV_DB_NAME,
     password: process.env.DEV_DB_PASS,
+    clusterName: process.env.DEV_CLUSTER_NAME,
   },
 };
 
@@ -18,7 +19,8 @@ const pro = {
     host: process.env.PRO_DB_HOST,
     port: process.env.PRO_DB_PORT,
     name: process.env.PRO_DB_NAME,
-    password: process.env.DEV_DB_PASS,
+    password: process.env.PRO_DB_PASS,
+    clusterName: process.env.PRO_CLUSTER_NAME,
   },
 };
 const config = { dev, pro };

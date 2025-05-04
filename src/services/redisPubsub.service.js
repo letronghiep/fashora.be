@@ -3,8 +3,8 @@ const Redis = require("ioredis");
 
 class RedisPubsubService {
   constructor() {
-    this.subscriber = new Redis(); // Correct instantiation
-    this.publisher = new Redis();
+    this.subscriber = new Redis(process.env.REDIS_URL); // Correct instantiation
+    this.publisher = new Redis(process.env.REDIS_URL);
   }
   publish(channel, message) {
     return new Promise((resolve, reject) => {
