@@ -19,9 +19,10 @@ const signUp = async (req, res, next) => {
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     secure: true,
-    sameSite: 'Strict',
+    sameSite: 'None',
     path: '/',
   });
+  
   new CREATED({
     message: "Đăng ký thành công",
     metadata: data,
@@ -39,9 +40,10 @@ const login = async (req, res, next) => {
     httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     secure: true,
-    sameSite: 'Strict',
+    sameSite: 'None',
     path: '/',
   });
+  
   new OK({
     message: "Đăng nhập thành công",
     metadata: data,
