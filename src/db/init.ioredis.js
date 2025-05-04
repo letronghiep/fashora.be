@@ -49,8 +49,8 @@ const handleEventConnection = async ({ connectionRedis }) => {
 
 const init = ({
   IOREDIS_IS_ENABLED,
-  IOREDIS_HOST = process.env.REDIS_HOST,
-  IOREDIS_PORT = process.env.REDIS_PORT,
+  // IOREDIS_HOST = process.env.REDIS_HOST,
+  // IOREDIS_PORT = process.env.REDIS_PORT,
 }) => {
   if (IOREDIS_IS_ENABLED) {
     const instanceRedis = new Redis(process.env.REDIS_URL, {
