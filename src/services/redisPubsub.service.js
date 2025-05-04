@@ -1,10 +1,10 @@
 "use strict";
-const Redis = require("redis");
+const Redis = require("ioredis");
 
 class RedisPubsubService {
   constructor() {
-    this.subscriber = Redis.createClient();
-    this.publisher = Redis.createClient();
+    this.subscriber = new Redis(); // Correct instantiation
+    this.publisher = new Redis();
   }
   publish(channel, message) {
     return new Promise((resolve, reject) => {
