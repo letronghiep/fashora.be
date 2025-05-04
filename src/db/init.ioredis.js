@@ -53,6 +53,9 @@ const init = ({
   // IOREDIS_PORT = process.env.REDIS_PORT,
 }) => {
   if (IOREDIS_IS_ENABLED) {
+    if (!process.env.REDIS_URL.startsWith("rediss://")) {
+      throw new Error("REDIS_URL không hợp lệ: thiếu rediss://");
+    }
     const instanceRedis = new Redis(process.env.REDIS_URL, {
       tls: {} // Cần có để kết nối TLS
     });
