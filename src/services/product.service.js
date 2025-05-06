@@ -312,8 +312,8 @@ const addToWishListService = async ({ userId, product_id, customer_id }) => {
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-001",
-    senderId: userId,
-    
+    senderId: customer_id,
+    receiverId: '675c6f050288fb66c0edfb0d',
   });
   return addedProduct;
 };
