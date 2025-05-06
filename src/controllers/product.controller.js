@@ -174,6 +174,7 @@ const updateProductFavorite = async (req, res, next) => {
     metadata: await updateProductFavoriteService({
       product_id: req.params.product_id,
       userId: req.user.userId,
+      customer_id: req.query.customer_id,
     }),
   }).send(res);
 };

@@ -159,22 +159,23 @@ const updateProductStatusService = async ({
   });
   return updatedProduct;
 };
-const updateProductFavoriteService = async ({ product_id, userId }) => {
+const updateProductFavoriteService = async ({ product_id, userId, customer_id }) => {
   const foundProduct = await foundProductByShop({
     product_id,
     product_shop: userId,
   });
   if (!foundProduct) throw new NotFoundError("Không tìm thấy sản phẩm");
-  const notify_content = `Người dùng <a>${foundShop.usr_name}</a> vừa thêm <a>${foundProduct.product_name}</a> vào phần yêu thích `;
+  const foundCustomer = await User.findOne({_id: new Types.ObjectId(customer_id)});
+  const notify_content = `Người dùng <a>${foundCustomer.usr_name}</a> vừa thêm <a>${foundProduct.product_name}</a> vào phần yêu thích `;
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-001",
-    senderId: product.product_shop,
+    senderId: customer_id,
     options: {
       // link:
       // shorten Url or link product
     },
-    receiverId: foundProduct.product_shop,
+    receiverId: '675c6f050288fb66c0edfb0d',
   });
   const updatedProduct = await updateFavoriteProduct({
     product_id,
