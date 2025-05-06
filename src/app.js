@@ -32,7 +32,7 @@ require("./db/init.mongodb");
 
 const portSocket = process.env.PORT_SOCKET || 8000;
 initSocket(server);
-server.listen(PORT, () => {
+server.listen(portSocket, () => {
   console.log(`Socket server listening on portSocket ${portSocket}`);
 });
 // ioredis
