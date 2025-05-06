@@ -116,16 +116,15 @@ const updateFavoriteProduct = async ({ product_id, userId }) => {
       { $pull: { product_favorites: userId } },
       { new: true }
     );
+    await Sku.updateMany({ product_id }, { $pull: { product_favorites: userId } });
   } else {
     updatedFavorite = await Product.findByIdAndUpdate(
       product_id,
       { $push: { product_favorites: userId } },
       { new: true }
     );
-  }
-  await Sku.updateMany({
-    product_id: product_id,
-  });
+    await Sku.updateMany({ product_id }, { $addToSet: { product_favorites: userId } });
+ 
   await io.emit(`updatedLikes:${product_id}`, {
     likesCount: updatedFavorite.product_favorites.length,
   });
