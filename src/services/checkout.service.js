@@ -467,6 +467,7 @@ const createCheckoutOnlineService = async ({
     cartId,
     userId,
     shop_order_ids,
+    payment_method: "BANK",
   });
   const transID = Math.floor(Math.random() * 1000000);
   const order = {
