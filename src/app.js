@@ -31,7 +31,7 @@ require("./db/init.mongodb");
 // checkOverload()
 
 // const portSocket = process.env.PORT_SOCKET || 8000;
-const server = https.createServer(app, {
+const server = https.createServer({
   key: readFileSync('public/pem/key.pem'),
   cert: readFileSync('public/pem/cert.pem')
 });
