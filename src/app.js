@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const http = require("http");
+const https = require("https");
 const { default: helmet } = require("helmet");
 const compression = require("compression");
 const morgan = require("morgan");
@@ -10,7 +10,7 @@ const { initSocket } = require("./db/init.socket");
 const app = express();
 const credentials = require("./middlewares/credentials");
 const corsOptions = require('./configs/corsOptions')
-
+const {readFileSync} = require('fs')
 // init middlewares
 // const server = http.createServer(app);
 // app.options('*', cors(corsOptions));
@@ -31,7 +31,10 @@ require("./db/init.mongodb");
 // checkOverload()
 
 // const portSocket = process.env.PORT_SOCKET || 8000;
-const server = http.createServer(app);
+const server = https.createServer(app, {
+  key: readFileSync('public/pem/key.pem'),
+  cert: readFileSync('public/pem/cert.pem')
+});
 initSocket(server);
 // server.listen(portSocket, () => {
 //   console.log(`Socket server listening on portSocket ${portSocket}`);
