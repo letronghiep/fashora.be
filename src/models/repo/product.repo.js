@@ -106,7 +106,7 @@ const updateFavoriteProduct = async ({ product_id, userId }) => {
   // check product exists
   const foundProduct = await getProductById({ productId: product_id });
   if (!foundProduct) throw new NotFoundError("Sản phẩm không tồn tại");
-  const isFavorite = foundProduct.product_favorites.find(
+  const isFavorite = foundProduct?.product_favorites?.find(
     (user_id) => user_id.toString() === userId
   );
   let updatedFavorite;
