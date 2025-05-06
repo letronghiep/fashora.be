@@ -461,7 +461,7 @@ const createCheckoutOnlineService = async ({
     cart_id: cartId,
 
     //sau khi hoàn tất thanh toán sẽ đi vào link này (thường là link web thanh toán thành công của mình)
-    redirecturl: "http://localhost:3000/checkout/success",
+    redirecturl: process.env.REDIRECT_URL_FE + "/checkout/success",
   };
   const { shop_order_ids_new, checkout_order } = await checkoutReviewService({
     cartId,
