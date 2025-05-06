@@ -199,6 +199,7 @@ const addProductToWishList = async (req, res, next) => {
     metadata: await addToWishListService({
       userId: req.user.userId,
       product_id: req.params.product_id,
+      customer_id: req.query.customer_id,
     }),
   }).send(res);
 };

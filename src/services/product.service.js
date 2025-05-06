@@ -297,7 +297,7 @@ const updateProductService = async ({
 };
 // add to wishlist
 
-const addToWishListService = async ({ userId, product_id }) => {
+const addToWishListService = async ({ userId, product_id, customer_id }) => {
   const foundProduct = await foundProductByShop({
     product_id,
     product_shop: userId,
@@ -307,7 +307,8 @@ const addToWishListService = async ({ userId, product_id }) => {
     product_id: product_id,
     userId: userId,
   });
-  const notify_content = `Người dùng <a>${foundShop.usr_name}</a> vừa thêm <a>${addedProduct.product_name}</a> vào phần yêu thích `;
+  const foundCustomer = await User.findOne({_id: new Types.ObjectId(customer_id)});
+  const notify_content = `Người dùng <a>${foundCustomer.usr_name}</a> vừa thêm <a>${addedProduct.product_name}</a> vào phần yêu thích `;
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-001",
