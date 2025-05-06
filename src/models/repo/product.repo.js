@@ -59,11 +59,14 @@ const updateStatusProduct = async ({
   const foundProduct = await foundProductByShop({ product_id, product_shop });
   if (!foundProduct) throw new NotFoundError("Sản phẩm không tồn tại");
   foundProduct.product_status = product_status;
-  await Sku.updateMany({
-    product_id: product_id,
-  }, {
-    sku_status: product_status,
-  });
+  await Sku.updateMany(
+    {
+      product_id: product_id,
+    },
+    {
+      sku_status: product_status,
+    }
+  );
   return await Product.findByIdAndUpdate(product_id, foundProduct, {
     new: true,
   });
@@ -116,15 +119,21 @@ const updateFavoriteProduct = async ({ product_id, userId }) => {
       { $pull: { product_favorites: userId } },
       { new: true }
     );
-    await Sku.updateMany({ product_id }, { $pull: { product_favorites: userId } });
+    await Sku.updateMany(
+      { product_id },
+      { $pull: { product_favorites: userId } }
+    );
   } else {
     updatedFavorite = await Product.findByIdAndUpdate(
       product_id,
       { $push: { product_favorites: userId } },
       { new: true }
     );
-    await Sku.updateMany({ product_id }, { $addToSet: { product_favorites: userId } });
- 
+    await Sku.updateMany(
+      { product_id },
+      { $addToSet: { product_favorites: userId } }
+    );
+  }
   await io.emit(`updatedLikes:${product_id}`, {
     likesCount: updatedFavorite.product_favorites.length,
   });
@@ -154,5 +163,5 @@ module.exports = {
   updateFavoriteProduct,
   getCountFavoriteProduct,
   addProductToWishList,
-  increaseViewProduct
+  increaseViewProduct,
 };
