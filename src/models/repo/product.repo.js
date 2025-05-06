@@ -143,7 +143,7 @@ const increaseViewProduct = async ({ product_id }) => {
 const getCountFavoriteProduct = async ({ product_id }) => {
   const foundProduct = await getProductById({ productId: product_id });
   if (!foundProduct) throw new NotFoundError("Sản phẩm không tồn tại");
-  return foundProduct.product_favorites.length;
+  return foundProduct.product_favorites?.length || 0;
 };
 module.exports = {
   getProductById,
