@@ -524,7 +524,6 @@ const callbackZaloPayService = async ({ data, mac }) => {
     let dataStr = data;
     let reqMac = mac;
     let macCrypto = CryptoJS.HmacSHA256(dataStr, config.key2).toString();
-    console.log({ dataStr, reqMac, macCrypto });
     if (reqMac !== macCrypto) {
       // callback không hợp lệ
       result.return_code = -1;
@@ -546,6 +545,7 @@ const callbackZaloPayService = async ({ data, mac }) => {
           cartId,
           userId,
           shop_order_ids,
+          payment_method: "BANK",
         });
       const products = await shop_order_ids_new.flatMap((order) => {
         return order.item_products;
