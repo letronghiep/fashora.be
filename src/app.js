@@ -30,10 +30,10 @@ require("./db/init.mongodb");
 // const { checkOverload } = require('./helpers/check.connect')
 // checkOverload()
 
-const portSocket = 8000;
+const portSocket = process.env.PORT_SOCKET || 8000;
 initSocket(server);
-server.listen(portSocket, () => {
-  console.log(`Socket starting with ${portSocket}`);
+server.listen(PORT, () => {
+  console.log(`Socket server listening on portSocket ${portSocket}`);
 });
 // ioredis
 const ioRedis = require("./db/init.ioredis");
