@@ -203,8 +203,8 @@ const orderByUserService = async ({
     });
     await producer(JSON.stringify(newOrder), "orderQueue");
     // io.emit("order-requirement", newOrder);
+    return newOrder;
   }
-  return newOrder;
 };
 /*
  Query order
@@ -588,6 +588,7 @@ const callbackZaloPayService = async ({ data, mac }) => {
         });
         await producer(JSON.stringify(newOrder), "orderQueue");
         // io.emit("order-requirement", newOrder);
+        await newOrder.save();
       }
       result.return_code = 1;
       result.return_message = "success";
