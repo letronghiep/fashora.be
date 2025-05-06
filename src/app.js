@@ -12,7 +12,7 @@ const credentials = require("./middlewares/credentials");
 const corsOptions = require('./configs/corsOptions')
 
 // init middlewares
-const server = http.createServer(app);
+// const server = http.createServer(app);
 // app.options('*', cors(corsOptions));
 app.use(morgan("dev"));
 app.use(helmet());
@@ -30,11 +30,12 @@ require("./db/init.mongodb");
 // const { checkOverload } = require('./helpers/check.connect')
 // checkOverload()
 
-const portSocket = process.env.PORT_SOCKET || 8000;
+// const portSocket = process.env.PORT_SOCKET || 8000;
+const server = http.createServer(app);
 initSocket(server);
-server.listen(portSocket, () => {
-  console.log(`Socket server listening on portSocket ${portSocket}`);
-});
+// server.listen(portSocket, () => {
+//   console.log(`Socket server listening on portSocket ${portSocket}`);
+// });
 // ioredis
 const ioRedis = require("./db/init.ioredis");
 ioRedis.init({
