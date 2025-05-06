@@ -170,21 +170,21 @@ const orderByUserService = async ({
   const products = await shop_order_ids_new.flatMap((order) => {
     return order.item_products;
   });
-  const acquireProduct = [];
-  for (let i = 0; i < products.length; i++) {
-    const { productId, quantity } = products[i];
-    const keyLock = await acquireLock(productId, quantity, cartId);
-    acquireProduct.push(keyLock ? true : false);
-    if (keyLock) {
-      await releaseLock(keyLock);
-    }
-  }
-  // check neu co mot san pham het hang trong kho
-  if (acquireProduct.includes(false)) {
-    throw new BadRequestError(
-      "Mot so san pham da duoc cap nhat, vui long quay lai gio hang..."
-    );
-  }
+  // const acquireProduct = [];
+  // for (let i = 0; i < products.length; i++) {
+  //   const { productId, quantity } = products[i];
+  //   const keyLock = await acquireLock(productId, quantity, cartId);
+  //   acquireProduct.push(keyLock ? true : false);
+  //   if (keyLock) {
+  //     await releaseLock(keyLock);
+  //   }
+  // }
+  // // check neu co mot san pham het hang trong kho
+  // if (acquireProduct.includes(false)) {
+  //   throw new BadRequestError(
+  //     "Mot so san pham da duoc cap nhat, vui long quay lai gio hang..."
+  //   );
+  // }
   const newOrder = await Order.create({
     order_userId: userId,
     order_id: randomString(),
@@ -549,21 +549,21 @@ const callbackZaloPayService = async ({ data, mac }) => {
       const products = await shop_order_ids_new.flatMap((order) => {
         return order.item_products;
       });
-      const acquireProduct = [];
-      for (let i = 0; i < products.length; i++) {
-        const { productId, quantity } = products[i];
-        const keyLock = await acquireLock(productId, quantity, cartId);
-        acquireProduct.push(keyLock ? true : false);
-        if (keyLock) {
-          await releaseLock(keyLock);
-        }
-      }
-      // check neu co mot san pham het hang trong kho
-      if (acquireProduct.includes(false)) {
-        throw new BadRequestError(
-          "Mot so san pham da duoc cap nhat, vui long quay lai gio hang..."
-        );
-      }
+      // const acquireProduct = [];
+      // for (let i = 0; i < products.length; i++) {
+      //   const { productId, quantity } = products[i];
+      //   const keyLock = await acquireLock(productId, quantity, cartId);
+      //   acquireProduct.push(keyLock ? true : false);
+      //   if (keyLock) {
+      //     await releaseLock(keyLock);
+      //   }
+      // }
+      // // check neu co mot san pham het hang trong kho
+      // if (acquireProduct.includes(false)) {
+      //   throw new BadRequestError(
+      //     "Mot so san pham da duoc cap nhat, vui long quay lai gio hang..."
+      //   );
+      // }
       const newOrder = await Order.create({
         order_userId: dataJson.app_user,
         order_id: randomString(),
