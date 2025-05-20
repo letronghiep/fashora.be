@@ -7,6 +7,7 @@ const morgan = require("morgan");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const { initSocket } = require("./db/init.socket");
+const { consumer } = require("./services/rabbitMQ.service");
 const app = express();
 const credentials = require("./middlewares/credentials");
 const corsOptions = require('./configs/corsOptions')
@@ -22,23 +23,28 @@ app.use(express.urlencoded({ limit: "50mb", extended: true })); // Tăng giới
 app.use(cookieParser());
 app.use(credentials);
 app.use(cors(corsOptions));
+
+// init schedule service
+require("./services/schedule.service");
+
+// Khởi động consumer cho SMS queue
+// const startSmsConsumer = async () => {
+//   try {
+//     console.log('Starting SMS consumer...');
+//     await consumer('sms_queue');
+//     console.log('SMS consumer started successfully');
+//   } catch (error) {
+//     console.error('Failed to start SMS consumer:', error);
+//   }
+// };
+
+// // Khởi động consumer
+// startSmsConsumer();
+
 // init db
 require("./db/init.mongodb");
-// redis
-// const initRedis = require('./db/init.redis');
-// initRedis.initRedis()
-// const { checkOverload } = require('./helpers/check.connect')
-// checkOverload()
-
-// const portSocket = process.env.PORT_SOCKET || 8000;
-// const server = https.createServer({
-//   key: readFileSync('public/pem/key.pem'),
-//   cert: readFileSync('public/pem/cert.pem')
-// });
-initSocket(server);
-// server.listen(portSocket, () => {
-//   console.log(`Socket server listening on portSocket ${portSocket}`);
-// });
+// socket
+// initSocket(server);
 // ioredis
 const ioRedis = require("./db/init.ioredis");
 ioRedis.init({

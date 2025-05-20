@@ -89,6 +89,10 @@ const uploadImageFromLocalFiles = async ({ files }) => {
             thumb_url: thumb_url,
           };
         })
+        .then(() => {
+          const pathName = `./src/uploads`;
+          removeFileFromDirectory(pathName);
+        })
     );
 
     // Chờ tất cả các promises hoàn thành

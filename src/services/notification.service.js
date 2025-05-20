@@ -3,7 +3,7 @@ const { Types } = require("mongoose");
 const Notification = require("../models/notification.model");
 const { NotFoundError, BadRequestError } = require("../core/error.response");
 const { getIO } = require("../db/init.socket");
-const io = getIO();
+var io;
 const pushNotifyToSystem = async ({
   type = "SHOP-001",
   receiverId,
@@ -31,22 +31,50 @@ const pushNotifyToSystem = async ({
   });
   return newNotify;
 };
+// const listNotifyByUserService = async ({ userId, isAll, isRead }) => {
+//   let match;
+//   if (isAll == "true" || isAll == true) {
+//     match = {
+//       notify_receiverId: new Types.ObjectId(userId),
+//     };
+//   } else {
+//     match = {
+//       notify_receiverId: new Types.ObjectId(userId),
+//       notify_isRead: isRead,
+//     };
+//   }
+//   const result = await Notification.aggregate([
+//     {
+//       $match: match,
+//     },
+//     {
+//       $project: {
+//         notify_type: 1,
+//         notify_senderId: 1,
+//         notify_receiverId: 1,
+//         notify_content: 1,
+//         notify_isRead: 1,
+//         createdAt: 1,
+//         notify_options: 1,
+//         count_not_read: 1,
+//       },
+//     },
+//   ]).sort({ createdAt: -1 });
+//   return result;
+
+// };
 const listNotifyByUserService = async ({ userId, isAll, isRead }) => {
-  let match;
-  if (isAll == "true") {
-    match = {
-      notify_receiverId: new Types.ObjectId(userId),
-    };
-  } else {
-    match = {
-      notify_receiverId: new Types.ObjectId(userId),
-      notify_isRead: isRead,
-    };
-  }
+  const isAllBool = String(isAll).toLowerCase() === "true";
+
+  const match = {
+    notify_receiverId: new Types.ObjectId(userId),
+    ...(isAllBool
+      ? {}
+      : { notify_isRead: isRead === "true" || isRead === true }),
+  };
+
   const result = await Notification.aggregate([
-    {
-      $match: match,
-    },
+    { $match: match },
     {
       $project: {
         notify_type: 1,
@@ -60,9 +88,10 @@ const listNotifyByUserService = async ({ userId, isAll, isRead }) => {
       },
     },
   ]).sort({ createdAt: -1 });
+
   return result;
-  
 };
+
 const updateReadNotifyService = async ({ notify_id, receiverId }) => {
   const notification = await Notification.findOne({
     _id: new Types.ObjectId(notify_id),
@@ -84,8 +113,9 @@ const updateReadNotifyService = async ({ notify_id, receiverId }) => {
   if (!notifyUpdated) {
     throw new BadRequestError("Cập nhật thông báo thất bại");
   }
-  await io.emit("read:notification", "1");
-  return notifyUpdated;
+  io = getIO();
+  await io.emit("read:notification", notify_id);
+  return notifyUpdated.modifiedCount;
 };
 const countNotificationService = async ({ receiverId, isRead }) => {
   const count = await Notification.countDocuments({

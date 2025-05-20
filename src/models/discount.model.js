@@ -84,6 +84,10 @@ var discountSchema = new Schema(
       default: "pending",
       enum: ["pending", "active", "block", "expired"],
     },
+    discount_user_id: {
+      type: Types.ObjectId,
+      ref: "User",
+    },
   },
 
   {

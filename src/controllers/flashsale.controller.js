@@ -9,6 +9,7 @@ const {
   createFlashSaleService,
   getFlashSaleService,
   getFlashSalesService,
+  updateFlashSaleService,
 } = require("../services/flashsale.service");
 const { CREATED, SuccessResponse } = require("../core/success.response");
 
@@ -46,8 +47,18 @@ const getFlashSale = async (req, res, next) => {
     }),
   }).send(res);
 };
+const updateFlashSale = async (req, res, next) => {
+  new SuccessResponse({
+    message: "Flash sale updated",
+    metadata: await updateFlashSaleService({
+      flashSaleId: req.params.flash_sale,
+      update: req.body,
+    }),
+  }).send(res);
+};
 module.exports = {
   createFlashSale,
   getFlashSale,
   getFlashSales,
+  updateFlashSale,
 };

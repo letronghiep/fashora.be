@@ -24,6 +24,8 @@ const {
   getArrivalsProduct,
   getHomePage,
   getFavoriteProducts,
+  updateStatusProductByShop,
+  updatePriceSku,
 } = require("../../controllers/product.controller");
 const { authentication } = require("../../middlewares/authentication");
 const { grantAccess } = require("../../middlewares/rbac.middleware");
@@ -51,8 +53,13 @@ router.post(
 
 router.patch(
   "/seller/:product_id",
-  grantAccess("updateOwn", "product"),
+  authentication,
   asyncHandler(updateProductByShop)
+);
+router.patch(
+  "/seller/price/:sku_id",
+  authentication,
+  asyncHandler(updatePriceSku)
 );
 router.patch(
   "/favorite/:product_id",
@@ -65,6 +72,11 @@ router.patch(
   asyncHandler(addProductToWishList)
 );
 router.patch("/view/:product_id", asyncHandler(increaseViewProduct));
+router.patch(
+  "/seller/status/:product_id",
+  authentication,
+  asyncHandler(updateStatusProductByShop)
+);
 router.post(
   "/seller/block/:product_id",
   grantAccess("updateOwn", "product"),

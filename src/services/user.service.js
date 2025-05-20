@@ -17,7 +17,7 @@ const { Types } = require("mongoose");
 const KeyStore = require("../models/keyToken.model");
 const JWT = require("jsonwebtoken");
 const { getIO } = require("../db/init.socket");
-const io = getIO();
+var io;
 const { pushNotifyToSystem } = require("./notification.service");
 /**
  * create user [admin]
@@ -75,6 +75,7 @@ const createUserService = async ({
       usr_role,
       usr_status,
     });
+    io = getIO();
     io.on('user:register', (user) => {
       notify_content = `Người dùng <a>${newUser.usr_name}</a> vừa đăng ký tài khoản trên hệ thống `;
     });

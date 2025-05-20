@@ -28,10 +28,12 @@ const {
 // const { getDetailUser } = require("../models/repo/user.repo");
 // const { getIO } = require("../db/init.socket");
 const { pushNotifyToSystem } = require("./notification.service");
-const { Types } = require("mongoose");
+const { Types, default: mongoose } = require("mongoose");
 const { findAllDiscountSelect } = require("../models/repo/discount.repo");
 const { getBrandService } = require("./brands.service");
-
+const {
+  createInventoryTransactionService,
+} = require("./inventoryTransaction.service");
 /**
  * createProduct
  * getAllProduct
@@ -63,70 +65,86 @@ const createProductService = async ({
   product_status,
   sku_list = [],
   product_models,
+  product_seller,
 }) => {
-  // 1. check shop exists or active
-  const foundShop = await findShopById({
-    _id: new Types.ObjectId(product_shop),
-    status: "active",
-  });
-  if (!foundShop) throw new NotFoundError("Shop chưa được đăng ký");
-  // 2. create product
-  const product = await Product.create({
-    product_id: randomProductId(),
-    product_name,
-    product_thumb,
-    product_images,
-    product_description,
-    product_price,
-    product_category,
-    product_quantity,
-    product_shop,
-    product_attributes,
-    product_brand,
-    product_ratingAvg,
-    product_status,
-    product_variations,
-    // product_models,
-  });
-  if (product && sku_list.length) {
-    const skus = await createSkuService({
-      sku_list,
-      product_id: product._id,
-    }).then();
-    const total_stock = sku_list.reduce(
-      (total, sku) => (total += sku.sku_stock),
-      0
-    );
-    product.product_quantity = total_stock;
-    await Product.findByIdAndUpdate(product._id, {
-      $set: { product_models: skus },
+  // create session mongoose
+  // const session = await mongoose.startSession();
+  // session.startTransaction();
+  try {
+    // 1. check shop exists or active
+    const foundShop = await findShopById({
+      _id: new Types.ObjectId(product_shop),
+      status: "active",
     });
+    if (!foundShop) throw new NotFoundError("Shop chưa được đăng ký");
+    // 2. create product
+    const product = await Product.create({
+      product_id: randomProductId(),
+      product_name,
+      product_thumb,
+      product_images,
+      product_description,
+      product_price,
+      product_category,
+      product_quantity,
+      product_shop,
+      product_attributes,
+      product_brand,
+      product_ratingAvg,
+      product_status,
+      product_variations,
+      product_seller: product_price,
+      // product_models,
+    });
+    if (product && sku_list.length) {
+      // create sku
+      sku_list.forEach((sku) => {
+        sku.product_name = product.product_name;
+      });
+      const skus = await createSkuService({
+        sku_list,
+        product_id: product._id,
+      });
+      const updatedProduct = await Product.findOneAndUpdate(
+        { _id: product._id },
+        {
+          $addToSet: { product_models: { $each: await skus } },
+          // $set: { product_quantity: total_stock },
+        },
+        { new: true } // optional: return the updated document
+      );
+      if (!updatedProduct) throw new NotFoundError("Không tìm thấy sản phẩm");
+      // create inventory transaction
+      const inventoryTransations = skus.map((sku) => ({
+        transaction_productId: product._id,
+        transaction_shopId: product.product_shop,
+        transaction_location: "",
+        transaction_stock: 0,
+        transaction_skuId: sku.sku_id,
+        transaction_type: "created",
+        transaction_quantity: sku.sku_stock,
+        transaction_note: "Created product from shop",
+      }));
+      for (const tx of inventoryTransations) {
+        await createInventoryTransactionService(tx);
+      }
+    }
+    // send notification
+    const notify_content = `Người dùng <a>${foundShop.usr_name}</a> vừa thêm <a>${product.product_name}</a> vào giỏ hàng `;
+    await pushNotifyToSystem({
+      notify_content: notify_content,
+      notify_type: "SHOP-001",
+      senderId: product.product_shop,
+      options: {
+        // link:
+        // shorten Url or link product
+      },
+      receiverId: product.product_shop,
+    });
+    return product;
+  } catch (error) {
+    throw error;
   }
-  // product.product_price =
-  await insertInventory({
-    productId: product._id,
-    shopId: product.product_shop,
-    location: "",
-    stock: product.product_quantity,
-  });
-  // // product.product_quantity = await Product.
-  const notify_content = `Người dùng <a>${foundShop.usr_name}</a> vừa thêm <a>${product.product_name}</a> vào giỏ hàng `;
-  await pushNotifyToSystem({
-    notify_content: notify_content,
-    notify_type: "SHOP-001",
-    senderId: product.product_shop,
-    options: {
-      // link:
-      // shorten Url or link product
-    },
-    receiverId: product.product_shop,
-  });
-  // io.emit("productCreated", {
-  //   message: notify_content,
-  //   createdAt: notification.createdAt,
-  //   // metadata: product,
-  // });
-  return product;
 };
 
 // draft product
@@ -146,7 +164,7 @@ const updateProductStatusService = async ({
     product_shop,
     product_status,
   });
-  const notify_content = `Người quản trị <a>${foundShop.usr_name}</a> vừa thay đổi trạng thái sản phẩm <a>${product.product_name}</a>`;
+  const notify_content = `Người quản trị vừa thay đổi trạng thái sản phẩm <a>${foundProduct.product_name}</a>`;
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-002",
@@ -159,13 +177,19 @@ const updateProductStatusService = async ({
   });
   return updatedProduct;
 };
-const updateProductFavoriteService = async ({ product_id, userId, customer_id }) => {
+const updateProductFavoriteService = async ({
+  product_id,
+  userId,
+  customer_id,
+}) => {
   const foundProduct = await foundProductByShop({
     product_id,
     product_shop: userId,
   });
   if (!foundProduct) throw new NotFoundError("Không tìm thấy sản phẩm");
-  const foundCustomer = await User.findOne({_id: new Types.ObjectId(customer_id)});
+  const foundCustomer = await User.findOne({
+    _id: new Types.ObjectId(customer_id),
+  });
   const notify_content = `Người dùng <a>${foundCustomer.usr_name}</a> vừa thêm <a>${foundProduct.product_name}</a> vào phần yêu thích `;
   await pushNotifyToSystem({
     notify_content: notify_content,
@@ -175,7 +199,7 @@ const updateProductFavoriteService = async ({ product_id, userId, customer_id })
       // link:
       // shorten Url or link product
     },
-    receiverId: '675c6f050288fb66c0edfb0d',
+    receiverId: "675c6f050288fb66c0edfb0d",
   });
   const updatedProduct = await updateFavoriteProduct({
     product_id,
@@ -242,6 +266,7 @@ const updateProductService = async ({
   product_variations,
   sku_list,
   product_models,
+  product_seller,
 }) => {
   // check exists product
   const foundProduct = await foundProductByShop({
@@ -250,7 +275,7 @@ const updateProductService = async ({
   });
   if (!foundProduct) throw new NotFoundError("Không tìm thấy sản phẩm");
   // update skus
-
+  sku_list = foundProduct.product_models;
   const total_stock = sku_list.reduce(
     (total, sku) => (total += sku.sku_stock),
     0
@@ -270,6 +295,7 @@ const updateProductService = async ({
     product_variations,
     sku_list,
     product_models,
+    product_seller,
   };
   await updateSkuService({ product_id: product_id, sku_list: sku_list });
 
@@ -288,13 +314,44 @@ const updateProductService = async ({
     location: "",
     stock: total_stock,
   });
-  const notify_content = `Người quản trị <a>${foundShop.usr_name}</a> vừa cập nhật sản phẩm <a>${foundProduct.product_name}</a>`;
+  const notify_content = `Người quản trị vừa cập nhật sản phẩm <a>${foundProduct.product_name}</a>`;
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-002",
     senderId: foundProduct.product_shop,
+    receiverId: foundProduct.product_shop,
   });
   return modifiedCount;
+};
+// update price sku
+const updatePriceSkuService = async ({ sku_id, price, product_id }) => {
+  const foundSku = await Sku.findOne({
+    sku_id: sku_id,
+  });
+  if (!foundSku) throw new NotFoundError("Không tìm thấy mặt hàng");
+  const productId = foundSku.product_id;
+  const foundProduct = await Product.findOne({
+    _id: productId,
+  });
+  if (!foundProduct) throw new NotFoundError("Không tìm thấy sản phẩm");
+  foundProduct.product_seller = price;
+  const updatedSku = await Sku.findOneAndUpdate(
+    { sku_id: sku_id },
+    { sku_price_sale: price },
+    { new: true }
+  );
+  if (!updatedSku) throw new NotFoundError("Không tìm thấy mặt hàng");
+  
+  // Cập nhật giá trong product_models
+  foundProduct.product_models = foundProduct.product_models.map(sku => {
+    if (sku.sku_id === sku_id) {
+      return { ...sku, sku_price_sale: price };
+    }
+    return sku;
+  });
+  
+  await foundProduct.save();
+  return updatedSku;
 };
 // add to wishlist
 
@@ -308,13 +365,15 @@ const addToWishListService = async ({ userId, product_id, customer_id }) => {
     product_id: product_id,
     userId: userId,
   });
-  const foundCustomer = await User.findOne({_id: new Types.ObjectId(customer_id)});
+  const foundCustomer = await User.findOne({
+    _id: new Types.ObjectId(customer_id),
+  });
   const notify_content = `Người dùng <a>${foundCustomer.usr_name}</a> vừa thêm <a>${addedProduct.product_name}</a> vào phần yêu thích `;
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "SHOP-001",
     senderId: customer_id,
-    receiverId: '675c6f050288fb66c0edfb0d',
+    receiverId: "675c6f050288fb66c0edfb0d",
   });
   return addedProduct;
 };
@@ -441,7 +500,12 @@ const searchProductService = async ({
     ...(Object.keys(query).length > 0 ? query : {}),
   };
 
-  if (size !== "undefined" && color !== "undefined" && size != null && color != null) {
+  if (
+    size !== "undefined" &&
+    color !== "undefined" &&
+    size != null &&
+    color != null
+  ) {
     const sizes = size.split(",").map((s) => s.trim());
     const colors = color.split(",").map((c) => c.trim());
     const combinations = [];
@@ -652,7 +716,10 @@ const getArrivalsProductService = async ({ limit = 50 }) => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30); // Lùi về 30 ngày trước
 
-  const newArrivals = await Product.find({ createdAt: { $gte: thirtyDaysAgo } })
+  const newArrivals = await Product.find({
+    product_status: "published",
+    createdAt: { $gte: thirtyDaysAgo },
+  })
     .sort({ createdAt: -1 })
     .limit(limit);
   return newArrivals;
@@ -696,10 +763,16 @@ const getBestSellerService = async ({ limit }) => {
     },
     { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
     {
+      $match: {
+        "product.product_status": "published",
+      },
+    },
+    {
       $project: {
         _id: "$_id",
         product_name: "$product.product_name",
         product_price: "$product.product_price",
+        product_seller: "$product.product_seller",
         product_slug: "$product.product_slug",
         product_thumb: "$product.product_thumb",
         totalSold: 1,
@@ -751,4 +824,5 @@ module.exports = {
   getBestSellerService,
   getHomePageService,
   getFavoriteProductsService,
+  updatePriceSkuService,
 };

@@ -16,6 +16,10 @@ var skuSchema = new Schema(
       type: String,
       required: true,
     },
+    product_name: {
+      type: String,
+      required: true,
+    },
     sku_tier_idx: {
       type: Array,
       default: [],
@@ -33,12 +37,12 @@ var skuSchema = new Schema(
       default: 0,
     },
     sku_price: {
-      type: String,
+      type: Number,
       required: true,
     },
     sku_price_sale: {
-      type: String,
-      default: "0",
+      type: Number,
+      default: 0,
     },
     sku_stock: {
       type: Number,

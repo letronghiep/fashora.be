@@ -56,9 +56,8 @@ const init = ({
     if (!process.env.REDIS_URL.startsWith("rediss://")) {
       throw new Error("REDIS_URL không hợp lệ: thiếu rediss://");
     }
-    const instanceRedis = new Redis(process.env.REDIS_URL, {
-      tls: {} // Cần có để kết nối TLS
-    });
+    const instanceRedis = new Redis(process.env.REDIS_URL);
+    
     clients.instanceConnect = instanceRedis;
     handleEventConnection({
       connectionRedis: instanceRedis,

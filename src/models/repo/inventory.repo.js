@@ -5,12 +5,14 @@ const insertInventory = async ({
   shopId,
   location = "unKnow",
   stock,
+  skuId,
 }) => {
   return await Inventory.create({
     inven_productId: productId,
     inven_shopId: shopId,
     inven_stock: stock,
     inven_location: location,
+    inven_skuId: skuId,
   });
 };
 const updateInventory = async ({
@@ -18,12 +20,16 @@ const updateInventory = async ({
   shopId,
   location = "unKnown",
   stock,
+  skuId,
 }) => {
   const inventory = {
     inven_shopId: shopId,
     inven_stock: stock,
     inven_location: location,
   };
+  if (skuId) {
+    inventory.inven_skuId = skuId;
+  }
   return await Inventory.findOneAndUpdate(
     {
       inven_productId: productId,
@@ -36,10 +42,11 @@ const updateInventory = async ({
   );
   
 };
-const reservationInventory = async ({ productId, quantity, cartId }) => {
+const reservationInventory = async ({ productId, quantity, cartId, skuId }) => {
   const query = {
       inven_productId: productId,
       inven_stock: { $gte: quantity },
+      inven_skuId: skuId,
     },
     updateSet = {
       $inc: { inven_stock: -quantity },

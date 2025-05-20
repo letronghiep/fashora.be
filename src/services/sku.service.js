@@ -44,6 +44,7 @@ const findSkusByTierIdx = async (sku_list) => {
   return foundSkus;
 };
 const updateSkuService = async ({ product_id, sku_list }) => {
+  console.log({product_id, sku_list});
   if (!sku_list.length) return;
 
   if (!sku_list.length) return;

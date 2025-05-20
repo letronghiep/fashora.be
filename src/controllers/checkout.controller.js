@@ -11,7 +11,7 @@ const {
   exportOrderToCSVService,
   createCheckoutOnlineService,
   callbackZaloPayService,
-  getOrderForAdminService
+  getOrderForAdminService,
 } = require("../services/checkout.service");
 
 const checkoutReview = async (req, res, next) => {
@@ -90,6 +90,7 @@ const cancelOrder = async (req, res, next) => {
     metadata: await cancelOrderService({
       orderId: req.params.order_id,
       userId: req.user.userId,
+      shopId: "675c6f050288fb66c0edfb0d",
     }),
   }).send(res);
 };
@@ -101,11 +102,14 @@ const exportOrderToCSV = async (req, res, next) => {
 
     const { filename, content } = await exportOrderToCSVService({
       userId,
-      filter: { order_status, startDate, endDate }
+      filter: { order_status, startDate, endDate },
     });
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(content);
   } catch (error) {
     next(error);
@@ -119,18 +123,18 @@ const createCheckoutOnline = async (req, res, next) => {
       ...req.body,
     }),
   }).send(res);
-}
+};
 const callbackZaloPay = async (req, res, next) => {
-    new CREATED({
-      message: "create checkout online",
-      metadata: await callbackZaloPayService({
-        // userId: req.user.userId,
-        data: req.body.data,
-        mac: req.body.mac,
-        ...req.body
-      }),
-    }).send(res);
-}
+  new CREATED({
+    message: "create checkout online",
+    metadata: await callbackZaloPayService({
+      // userId: req.user.userId,
+      data: req.body.data,
+      mac: req.body.mac,
+      ...req.body,
+    }),
+  }).send(res);
+};
 module.exports = {
   checkoutReview,
   orderByUser,
@@ -141,5 +145,5 @@ module.exports = {
   exportOrderToCSV,
   createCheckoutOnline,
   callbackZaloPay,
-  getOrderForAdmin
+  getOrderForAdmin,
 };

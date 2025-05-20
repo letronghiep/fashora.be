@@ -5,7 +5,7 @@ const Comment = require("../models/comment.model");
 const { getProductById } = require("../models/repo/product.repo");
 const { paginate } = require("../helpers/paginate");
 const { getIO } = require("../db/init.socket");
-const io = getIO();
+var io;
 /**
  * create comment
  * get comment parent
@@ -68,6 +68,7 @@ const createCommentService = async ({
   comment.comment_right = right_value + 1;
   await comment.save();
   const dataComment = await comment.populate([{path: 'comment_productId'}, {path: 'comment_userId'}]);
+  io = getIO();
   io.emit("createdComment", { comment: dataComment });
   return comment;
 };

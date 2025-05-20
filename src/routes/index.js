@@ -26,5 +26,6 @@ router.use("/v1/api/attributes", require("./attributes"));
 router.use("/v1/api/flashsale", require("./flashsale"));
 router.use("/v1/api/banners", require("./banner"));
 router.use("/v1/api/chat", require("./chat"));
-
+router.use("/v1/api/inventory", require("./inventory"));
+router.use("/v1/api/inventory-transactions", require("./inventoryTransations"));
 module.exports = router;

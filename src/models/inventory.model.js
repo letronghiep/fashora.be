@@ -22,6 +22,10 @@ var inventorySchema = new Schema(
       type: Types.ObjectId,
       ref: "Shop",
     },
+    inven_skuId: {
+      type: String,
+      required: true,
+    },
     inven_reservations: {
       type: Array,
       default: [],

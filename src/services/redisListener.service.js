@@ -6,7 +6,7 @@ const Notification = require("../models/notification.model");
 const { generateNotification } = require("../models/repo/notification.repo");
 const redisPubsub = new RedisPubsub();
 const { getIO } = require("../db/init.socket");
-const io = getIO();
+var io;
 module.exports = {
   listenRedis: async () => {
     const adminId = await getAdmin();
@@ -22,6 +22,7 @@ module.exports = {
           notify_receiverId: data.user_id,
           notify_options: data,
         });
+        io = getIO();
         io.emit(event, data);
       } catch (error) {
         console.error(error);

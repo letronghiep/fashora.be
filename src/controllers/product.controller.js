@@ -18,6 +18,7 @@ const {
   getArrivalsProductService,
   getHomePageService,
   getFavoriteProductsService,
+  updatePriceSkuService,
 } = require("../services/product.service");
 const {
   getRelatedProductsService,
@@ -99,7 +100,7 @@ const updateStatusProductByShop = async (req, res, next) => {
     metadata: await updateProductStatusService({
       product_id: req.params.product_id,
       product_shop: req.user.userId,
-      product_status: req.params.product_status,
+      product_status: req.body.product_status,
     }),
   }).send(res);
 };
@@ -162,9 +163,18 @@ const updateProductByShop = async (req, res, next) => {
   new SuccessResponse({
     message: "update success",
     metadata: await updateProductService({
+      ...req.body,
       product_id: req.params.product_id,
       product_shop: req.user.userId,
-      ...req.body,
+    }),
+  }).send(res);
+};
+const updatePriceSku = async (req, res, next) => {
+  new SuccessResponse({
+    message: "update success",
+    metadata: await updatePriceSkuService({
+      sku_id: req.params.sku_id,
+      price: req.body.sku_price_sale,
     }),
   }).send(res);
 };
@@ -317,4 +327,5 @@ module.exports = {
   getArrivalsProduct,
   getHomePage,
   getFavoriteProducts,
+  updatePriceSku,
 };

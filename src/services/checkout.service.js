@@ -1,5 +1,6 @@
 "use strict";
 const Order = require("../models/order.model");
+const Sku = require("../models/sku.model");
 const { BadRequestError } = require("../core/error.response");
 const {} = require("../core/success.response");
 const { findCartById } = require("../models/repo/cart.repo");
@@ -8,7 +9,10 @@ const { getDiscountAmount } = require("../controllers/discount.controller");
 const { acquireLock, releaseLock } = require("../services/redis.service");
 const { deleteUserCartService } = require("./cart.service");
 const { producer } = require("./rabbitMQ.service");
-const { getOrderByUserList, getOrderForAdminList } = require("../models/repo/checkout.repo");
+const {
+  getOrderByUserList,
+  getOrderForAdminList,
+} = require("../models/repo/checkout.repo");
 const { randomString } = require("../utils");
 const cartModel = require("../models/cart.model");
 const { Types } = require("mongoose");
@@ -18,6 +22,9 @@ const axios = require("axios");
 const moment = require("moment");
 var Product = require("../models/product.model");
 const CryptoJS = require("crypto-js");
+const {
+  createInventoryTransactionService,
+} = require("./inventoryTransaction.service");
 const config = {
   app_id: "2553",
   key1: "PcY4iZIKFCIdgZvA6ueMcMHHUbRLYjPL",
@@ -109,7 +116,7 @@ const checkoutReviewService = async ({
   checkout_order.totalPrice = +checkoutPrice;
   checkout_order.totalCheckout = +checkoutPrice + checkout_order.feeShip;
   const itemCheckout = {
-    // shopId,
+    shopId: shop_order_ids[0].shopId,
     discount_code,
     priceRaw: checkoutPrice,
     priceApplyDiscount: checkoutPrice,
@@ -200,6 +207,54 @@ const orderByUserService = async ({
       productId: shop_order_ids_new.flatMap((order) =>
         order.item_products.map((product) => product.productId)
       ),
+    });
+    // update sku
+    // const skuMap = new Map();
+    // shop_order_ids_new.forEach((order) => {
+    //   order.item_products.forEach((itemProduct) => {
+    //     const key = `${itemProduct.productId}_${itemProduct.skuId}`;
+    //     const prevQuantity = skuMap.get(key) || 0;
+    //     skuMap.set(key, prevQuantity + itemProduct.quantity);
+    //   });
+    // });
+
+    // for (const [key, quantity] of skuMap.entries()) {
+    //   const [productId, skuId] = key.split("_");
+    //   const product = await Product.findOne({
+    //     _id: new Types.ObjectId(productId),
+    //   });
+    //   // update product
+    //   if (product) {
+    //     product.product_quantity = Math.max(
+    //       product.product_quantity - quantity,
+    //       0
+    //     );
+    //     const modelIdx = product.product_models.findIndex(
+    //       (m) => m.sku_id === skuId
+    //     );
+    //     if (modelIdx !== -1) {
+    //       product.product_models[modelIdx].sku_stock = Math.max(
+    //         product.product_models[modelIdx].sku_stock - quantity,
+    //         0
+    //       );
+    //     }
+    //     await product.save();
+    //   }
+
+    // }
+    // update inventory transaction
+    shop_order_ids_new.forEach((order) => {
+      order.item_products.forEach(async (itemProduct) => {
+        await createInventoryTransactionService({
+          transaction_type: "sold",
+          transaction_productId: itemProduct.productId,
+          transaction_quantity: itemProduct.quantity,
+          transaction_skuId: itemProduct.skuId,
+          transaction_shopId: order.shopId,
+          transaction_userId: userId,
+          transaction_note: `Thanh toán đơn hàng #${newOrder.order_id}`,
+        });
+      });
     });
     await producer(JSON.stringify(newOrder), "orderQueue");
     // io.emit("order-requirement", newOrder);
@@ -331,7 +386,7 @@ const getDetailOrderService = async ({ userId, orderId }) => {
   return orderResult;
 };
 
-const cancelOrderService = async ({ orderId, userId }) => {
+const cancelOrderService = async ({ orderId, userId, shopId }) => {
   const query = {
       order_userId: userId,
       _id: orderId,
@@ -340,6 +395,23 @@ const cancelOrderService = async ({ orderId, userId }) => {
       order_status: "canceled",
     };
   const { modifiedCount } = await Order.updateOne(query, updateSet);
+  if (modifiedCount === 0) throw new BadRequestError("Đơn hàng không tồn tại");
+  // update inventory transaction
+  const order = await Order.findOne(query).lean();
+  order.order_products.forEach(async (orderProduct) => {
+    orderProduct.item_products.forEach(async (itemProduct) => {
+      await createInventoryTransactionService({
+        transaction_type: "import",
+        transaction_productId: itemProduct.productId,
+        transaction_quantity: itemProduct.quantity,
+        transaction_skuId: itemProduct.skuId,
+        transaction_shopId: shopId,
+        transaction_userId: userId,
+        transaction_note: `Hủy đơn hàng #${order.order_id}`,
+      });
+    });
+  });
+
   return modifiedCount;
 };
 const updateStatusOrderService = async ({ order_status, userId, orderId }) => {
@@ -586,6 +658,19 @@ const callbackZaloPayService = async ({ data, mac }) => {
           productId: shop_order_ids_new.flatMap((order) =>
             order.item_products.map((product) => product.productId)
           ),
+        });
+        shop_order_ids_new.forEach((order) => {
+          order.item_products.forEach(async (itemProduct) => {
+            await createInventoryTransactionService({
+              transaction_type: "sold",
+              transaction_productId: itemProduct.productId,
+              transaction_quantity: itemProduct.quantity,
+              transaction_skuId: itemProduct.skuId,
+              transaction_shopId: itemProduct.shopId,
+              transaction_userId: userId,
+              transaction_note: `Thanh toán đơn hàng #${newOrder.order_id}`,
+            });
+          });
         });
         await producer(JSON.stringify(newOrder), "orderQueue");
         // io.emit("order-requirement", newOrder);

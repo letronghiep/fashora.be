@@ -25,7 +25,7 @@ const { getIO } = require("../db/init.socket");
 const { listenRedis } = require("../services/redisListener.service");
 const { shippingConfig } = require("../configs/event.config");
 const { shippingCreated, shippingUpdated, shippingDeleted } = shippingConfig;
-const io = getIO();
+var io;
 // Get shipping information by shipping_id
 const redisPubsub = new RedisPubsubService();
 const getListShippingByUser = async ({
@@ -114,6 +114,7 @@ const createShippingByUser = async ({
   const addressKeyCacheItem = `${CACHE_SHIPPING["SHIPPING"]}:*`;
   await clearCachePattern(addressKeyCacheItem);
   await clearCachePattern(addressKeyCache);
+  io = getIO();
   await io.emit("new address", newAddress._id);
   return newAddress;
 };

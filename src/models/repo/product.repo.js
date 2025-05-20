@@ -7,7 +7,6 @@ const User = require("../user.model");
 const { NotFoundError } = require("../../core/error.response");
 const { getIO } = require("../../db/init.socket");
 const { getDetailUser } = require("./user.repo");
-const io = getIO();
 const getProductById = async ({ productId }) => {
   return await Product.findOne({
     _id: new Types.ObjectId(productId),
@@ -21,8 +20,8 @@ const getProductBySlug = async ({ productSlug }) => {
 
 const foundProductByShop = async ({ product_id, product_shop }) => {
   return await Product.findOne({
+    _id: new Types.ObjectId(product_id),
     product_shop: product_shop,
-    _id: product_id,
   });
 };
 async function findAllProduct({ limit, sort, page, filter, select }) {
@@ -46,6 +45,7 @@ const checkProductByServer = async ({ products }) => {
           price: foundProduct.product_price,
           quantity: product.quantity,
           productId: product.productId,
+          skuId: product.sku_id
         };
     })
   );
@@ -61,7 +61,7 @@ const updateStatusProduct = async ({
   foundProduct.product_status = product_status;
   await Sku.updateMany(
     {
-      product_id: product_id,
+      product_id: new Types.ObjectId(product_id),
     },
     {
       sku_status: product_status,
@@ -134,6 +134,8 @@ const updateFavoriteProduct = async ({ product_id, userId }) => {
       { $addToSet: { product_favorites: userId } }
     );
   }
+  const io = getIO();
+
   await io.emit(`updatedLikes:${product_id}`, {
     likesCount: updatedFavorite.product_favorites.length,
   });
