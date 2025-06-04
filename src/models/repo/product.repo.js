@@ -45,7 +45,10 @@ const checkProductByServer = async ({ products }) => {
           price: foundProduct.product_price,
           quantity: product.quantity,
           productId: product.productId,
-          skuId: product.sku_id
+          skuId: product.sku_id,
+          price_sale: foundProduct.product_models.find(
+            (model) => model.sku_id === product.sku_id
+          )?.sku_price_sale,
         };
     })
   );

@@ -59,7 +59,7 @@ const searchProduct = async (req, res, next) => {
       product_status: req.query.product_status,
       product_category: req.query.product_category,
       limit: req.query.offset,
-      currentPage: req.query.page,
+      currentPage: req.query.currentPage,
       sort: req.query.sort_by,
       product_price: req.query.product_price,
       size: req.query.size,

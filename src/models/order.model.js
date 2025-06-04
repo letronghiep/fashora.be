@@ -56,6 +56,7 @@ var orderSchema = new Schema(
     order_products: { type: Array, required: true },
     order_trackingNumber: {
       type: String,
+      unique: true,
       default: "#000118052022",
     },
     order_status: {

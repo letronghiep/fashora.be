@@ -24,8 +24,7 @@ app.use(cookieParser());
 app.use(credentials);
 app.use(cors(corsOptions));
 
-// init schedule service
-require("./services/schedule.service");
+
 
 // Khởi động consumer cho SMS queue
 // const startSmsConsumer = async () => {
@@ -43,13 +42,15 @@ require("./services/schedule.service");
 
 // init db
 require("./db/init.mongodb");
+// init schedule service
+require("./services/schedule.service");
 // socket
 // initSocket(server);
 // ioredis
-const ioRedis = require("./db/init.ioredis");
-ioRedis.init({
-  IOREDIS_IS_ENABLED: true,
-});
+// const ioRedis = require("./db/init.ioredis");
+// ioRedis.init({
+//   IOREDIS_IS_ENABLED: true,
+// });
 // init router
 app.use("/", require("./routes"));
 

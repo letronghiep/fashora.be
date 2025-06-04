@@ -97,11 +97,11 @@ const cancelOrder = async (req, res, next) => {
 
 const exportOrderToCSV = async (req, res, next) => {
   try {
-    const { userId } = req.user;
+    // const { userId } = req.user;
     const { order_status, startDate, endDate } = req.query;
 
     const { filename, content } = await exportOrderToCSVService({
-      userId,
+      // userId,
       filter: { order_status, startDate, endDate },
     });
 

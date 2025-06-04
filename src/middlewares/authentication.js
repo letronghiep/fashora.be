@@ -90,10 +90,46 @@ const isNotUser = async (req, res, next) => {
   }
 };
 
+const optionalAuth = async (req, res, next) => {
+  try {
+    const token = await req.headers[HEADER.AUTHORIZATION];
+    if (!token || !token.startsWith("Bearer ")) {
+      req.user = null;
+      return next();
+    }
+    
+    const userId = await req.headers[HEADER.CLIENT_ID];
+    const accessToken = token.split("Bearer ")[1];
+    const keyStore = await findKeyTokenByUser({ userId });
+    
+    if (!keyStore) {
+      req.user = null;
+      return next();
+    }
+
+    try {
+      const decodeUser = JWT.verify(accessToken, keyStore.publicKey);
+      if (userId !== decodeUser.userId) {
+        req.user = null;
+        return next();
+      }
+      req.user = decodeUser;
+      req.keyStore = keyStore;
+    } catch (error) {
+      req.user = null;
+    }
+    return next();
+  } catch (error) {
+    req.user = null;
+    next();
+  }
+};
+
 module.exports = {
   authentication,
   checkAdmin,
   checkSeller,
   isAdmin,
   isNotUser,
+  optionalAuth
 };

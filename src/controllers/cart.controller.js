@@ -31,6 +31,7 @@ const deleteCart = async (req, res, next) => {
     metadata: await deleteUserCartService({
       userId: req.user.userId,
       sku_id: req.params.sku_id,
+      price: parseInt(req.query.price_sale),
     }),
   }).send(res);
 };

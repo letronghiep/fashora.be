@@ -7,6 +7,7 @@ const {
 } = require("../models/repo/flashsale.repo");
 const { randomFlashSaleId } = require("../utils");
 const Banner = require("../models/banner.model");
+const ScheduleService = require("./schedule.service");
 const createFlashSaleService = async ({
   name,
   start_time,
@@ -27,15 +28,18 @@ const createFlashSaleService = async ({
     products: products,
   });
   await flashSale.save();
-  await Banner.create({
-    id: randomFlashSaleId(),
-    title: name,
-    thumb: thumb,
-    linkTo: flashSale.id,
-    isActive: true,
-    startDate: start_time,
-    endDate: end_time,
-  });
+  if (status === "ongoing") {
+    await Banner.create({
+      id: randomFlashSaleId(),
+      title: name,
+      thumb: thumb,
+      linkTo: flashSale.id,
+      isActive: true,
+      startDate: start_time,
+      endDate: end_time,
+    });
+    await ScheduleService.activateFlashSale(flashSale);
+  }
   return flashSale;
 };
 const getFlashSaleService = async ({ flashSaleId }) => {

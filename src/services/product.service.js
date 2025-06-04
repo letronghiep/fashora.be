@@ -34,6 +34,7 @@ const { getBrandService } = require("./brands.service");
 const {
   createInventoryTransactionService,
 } = require("./inventoryTransaction.service");
+const analysisRepo = require("../models/repo/analysis.repo");
 /**
  * createProduct
  * getAllProduct
@@ -341,15 +342,15 @@ const updatePriceSkuService = async ({ sku_id, price, product_id }) => {
     { new: true }
   );
   if (!updatedSku) throw new NotFoundError("Không tìm thấy mặt hàng");
-  
+
   // Cập nhật giá trong product_models
-  foundProduct.product_models = foundProduct.product_models.map(sku => {
+  foundProduct.product_models = foundProduct.product_models.map((sku) => {
     if (sku.sku_id === sku_id) {
       return { ...sku, sku_price_sale: price };
     }
     return sku;
   });
-  
+
   await foundProduct.save();
   return updatedSku;
 };
@@ -477,7 +478,7 @@ const searchProductService = async ({
     price.length === 2 && !isNaN(price[0]) && !isNaN(price[1]);
 
   const category =
-    product_category != null && product_category !== "undefined"
+    product_category != null && product_category !== "undefined" && product_category !== ""
       ? Array.isArray(product_category)
         ? product_category.map(Number).filter((v) => !isNaN(v))
         : typeof product_category === "string"
@@ -512,7 +513,9 @@ const searchProductService = async ({
 
     for (const c of colors) {
       for (const s of sizes) {
-        combinations.push(`${c}, ${s}`);
+        if (c.trim() && s.trim()) {
+          combinations.push(`${c}, ${s}`);
+        }
       }
     }
 
@@ -529,8 +532,8 @@ const searchProductService = async ({
     model: Product,
     filter: productFilter,
     populate: ["product_shop"],
-    limit,
-    page: currentPage,
+    limit: +limit,
+    page: +currentPage,
     sort,
   });
 
@@ -728,64 +731,202 @@ const getBestSellerService = async ({ limit }) => {
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-  const bestSellers = await Order.aggregate([
-    { $match: { createdAt: { $gte: oneWeekAgo } } },
-    { $unwind: { path: "$order_products", preserveNullAndEmptyArrays: true } },
+  // const bestSellers = await Order.aggregate([
+  //   { $match: { createdAt: { $gte: oneWeekAgo } } },
+  //   { $unwind: { path: "$order_products", preserveNullAndEmptyArrays: true } },
+  //   {
+  //     $unwind: {
+  //       path: "$order_products.item_products",
+  //       preserveNullAndEmptyArrays: true,
+  //     },
+  //   },
+  //   {
+  //     $match: {
+  //       "order_products.item_products.productId": {
+  //         $exists: true,
+  //         $type: "string",
+  //       },
+  //     },
+  //   },
+  //   {
+  //     $group: {
+  //       _id: { $toObjectId: "$order_products.item_products.productId" },
+  //       totalSold: { $sum: "$order_products.item_products.quantity" },
+  //     },
+  //   },
+  //   { $sort: { totalSold: -1 } },
+  //   { $limit: limit },
+  //   {
+  //     $lookup: {
+  //       from: "products",
+  //       localField: "_id",
+  //       foreignField: "_id",
+  //       as: "product",
+  //     },
+  //   },
+  //   { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+  //   {
+  //     $match: {
+  //       "product.product_status": "published",
+  //     },
+  //   },
+  //   {
+  //     $project: {
+  //       _id: "$_id",
+  //       product_name: "$product.product_name",
+  //       product_price: "$product.product_price",
+  //       product_seller: "$product.product_seller",
+  //       product_slug: "$product.product_slug",
+  //       product_thumb: "$product.product_thumb",
+  //       totalSold: 1,
+  //     },
+  //   },
+  // ]);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const bestSellers = await Sku.aggregate([
     {
-      $unwind: {
-        path: "$order_products.item_products",
-        preserveNullAndEmptyArrays: true,
+      $lookup: {
+        from: "orders",
+        let: { skuId: "$sku_id" },
+        pipeline: [
+          {
+            $match: {
+              createdAt: { $gte: thirtyDaysAgo },
+              order_status: {
+                $nin: ["cancelled", "pending", "failed", "refunded"],
+              },
+            },
+          },
+          {
+            $unwind: "$order_products",
+          },
+          { $unwind: "$order_products.item_products" },
+          {
+            $match: {
+              $expr: {
+                $eq: ["$order_products.item_products.skuId", "$$skuId"],
+              },
+            },
+          },
+          {
+            $project: {
+              quantity: "$order_products.item_products.quantity",
+            },
+          },
+        ],
+        as: "recentSales",
       },
     },
     {
-      $match: {
-        "order_products.item_products.productId": {
-          $exists: true,
-          $type: "string",
+      $addFields: {
+        oldSaleCount: { $size: "$recentSales" },
+        totalQuantitySold: {
+          $sum: "$recentSales.quantity",
         },
       },
     },
     {
-      $group: {
-        _id: { $toObjectId: "$order_products.item_products.productId" },
-        totalSold: { $sum: "$order_products.item_products.quantity" },
+      $match: {
+        oldSaleCount: { $gt: 3 },
+        sku_status: "published",
       },
     },
-    { $sort: { totalSold: -1 } },
-    { $limit: limit },
     {
       $lookup: {
         from: "products",
-        localField: "_id",
+        localField: "product_id",
         foreignField: "_id",
         as: "product",
       },
     },
-    { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
     {
-      $match: {
-        "product.product_status": "published",
+      $unwind: "$product",
+    },
+    {
+      $lookup: {
+        from: "inventories",
+        localField: "sku_id",
+        foreignField: "inven_skuId",
+        as: "inventory",
       },
     },
     {
+      $unwind: "$inventory",
+    },
+    {
       $project: {
-        _id: "$_id",
+        _id: "$product._id",
+        skuId: "$sku_id",
         product_name: "$product.product_name",
-        product_price: "$product.product_price",
-        product_seller: "$product.product_seller",
+        product_quantity: "$inventory.inven_stock",
         product_slug: "$product.product_slug",
         product_thumb: "$product.product_thumb",
-        totalSold: 1,
+        product_sale_price: "$product.product_sale",
+
+        oldSaleCount: 1,
+        totalQuantitySold: 1,
+        stockValue: {
+          $multiply: [
+            { $ifNull: ["$inventory.inven_stock", 0] },
+            { $ifNull: [{ $toDouble: "$sku_price" }, 0] },
+          ],
+        },
+        product_price: "$sku_price",
+        sku_name: "$sku_name",
+      },
+    },
+    {
+      $sort: { totalQuantitySold: -1 },
+    },
+    {
+      $limit: 10,
+    },
+  ]);
+  return bestSellers;
+};
+const getHomePageService = async () => {
+// const getDiscountedProductsService = async ({ limit = 10, page = 1 }) => {
+  const discountedProducts = await Sku.aggregate([
+    {
+      $match: {
+        sku_status: "published",
+        sku_price_sale: { $gt: 0 },
+        $expr: { $lt: ["$sku_price_sale", "$sku_price"] },
+      },
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "product_id",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    {
+      $unwind: "$product",
+    },
+    {
+      $project: {
+        skuId: "$sku_id",
+        sku_price_sale: 1,
+        sku_price: 1,
+        product_price: "$product.product_price",
+        product_seller: "$sku_price_sale",
+        product_name: "$product.product_name",
+        product_shop: "$product.product_shop",
+        product_slug: "$product.product_slug",
+        product_thumb: "$product.product_thumb",
+
       },
     },
   ]);
 
-  return bestSellers;
-};
-const getHomePageService = async () => {
+  // return discountedProducts;
+// };
   const arrivalProduct = await getArrivalsProductService({ limit: 10 });
-  const bestSeller = await getBestSellerService({ limit: 8 });
-  return { arrivalProduct, bestSeller };
+  const bestSeller = await analysisRepo.getTopSellingSku();
+  return { arrivalProduct, bestSeller, discountedProducts };
 };
 const getFavoriteProductsService = async ({ userId, limit = 10, page = 1 }) => {
   const user = await User.findById(userId).lean();

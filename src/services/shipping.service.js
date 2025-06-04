@@ -4,13 +4,13 @@ const Notification = require("../models/notification.model");
 const {
   getListAddress,
   getPaginateAddressList,
-  updateShippingInCache,
+  // updateShippingInCache,
 } = require("../models/repo/shipping.repo");
 const { findOneUser, getAdmin } = require("../models/repo/user.repo");
 const Shipping = require("../models/shipping.model");
 const { randomShippingId } = require("../utils");
 const RedisPubsubService = require("../services/redisPubsub.service");
-const { getIORedis } = require("../db/init.ioredis");
+// const { getIORedis } = require("../db/init.ioredis");
 const { CACHE_SHIPPING } = require("../configs/constant");
 const { NotFoundError } = require("../core/error.response");
 const { Types } = require("mongoose");

@@ -19,7 +19,7 @@ class AnalysisController {
   downloadRevenueCSV = async (req, res, next) => {
     try {
       const csvContent = await exportRevenueToCSVService({
-        userId: req.user.userId,
+        // userId: req.user.userId,
         startDate: req.query.startDate,
         endDate: req.query.endDate,
         type: req.query.type,
@@ -32,8 +32,9 @@ class AnalysisController {
       // res.sendFile(csvContent.fullPath);
       res.download(csvContent.fullPath, csvContent.filename, (err) => {
         if (!err) {
-          csvContent.deleteFile(); // Gọi hàm đã trả về từ service
-        }
+          // csvContent.deleteFile(); // Gọi hàm đã trả về từ service
+          // fs.unlinkSync(csvContent.fullPath);
+      }
       });
     } catch (error) {
       next(error);

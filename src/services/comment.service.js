@@ -2,6 +2,7 @@
 const { Types } = require("mongoose");
 const { NotFoundError } = require("../core/error.response");
 const Comment = require("../models/comment.model");
+const Product = require("../models/product.model");
 const { getProductById } = require("../models/repo/product.repo");
 const { paginate } = require("../helpers/paginate");
 const { getIO } = require("../db/init.socket");
@@ -67,6 +68,20 @@ const createCommentService = async ({
   comment.comment_left = right_value;
   comment.comment_right = right_value + 1;
   await comment.save();
+  // Tính lại trung bình đánh giá sản phẩm
+  const productComments = await Comment.find({
+    comment_productId: productId,
+  });
+
+  const totalRating = productComments.reduce((sum, comment) => {
+    return sum + comment.comment_rating;
+  }, 0);
+
+  const averageRating = totalRating / productComments.length;
+
+  await Product.findByIdAndUpdate(productId, {
+    product_rattingAvg: averageRating,
+  });
   const dataComment = await comment.populate([{path: 'comment_productId'}, {path: 'comment_userId'}]);
   io = getIO();
   io.emit("createdComment", { comment: dataComment });

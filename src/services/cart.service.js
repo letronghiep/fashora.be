@@ -1,19 +1,20 @@
 "use strict";
 const Cart = require("../models/cart.model");
+const FlashSale = require("../models/flashsale.model");
 const { getProductById } = require("../models/repo/product.repo");
 const { NotFoundError } = require("../core/error.response");
 const { Types } = require("mongoose");
 const skuModel = require("../models/sku.model");
 
 // REPO
-const createUserCart = async ({ userId, product }) => {
+const createUserCart = async ({ userId, operations }) => {
   const query = {
       cart_userId: userId,
       cart_state: "active",
     },
     updateSet = {
-      $addToSet: {
-        cart_products: product,
+      $push: {
+        cart_products: { $each: operations },
       },
     },
     options = {
@@ -64,10 +65,52 @@ const addToCartService = async ({ userId, product }) => {
     const userCart = await Cart.findOne({
       cart_userId: new Types.ObjectId(userId),
     }).lean();
-
+    // find product in flash sale
+    const flashSale = await FlashSale.findOne({
+      status: "ongoing",
+      products: {
+        $elemMatch: {
+          sku_id: sku_id,
+        },
+      },
+    });
+    let flashSalePrice = 0;
+    let normalQuantity = quantity;
+    let flashSaleQuantity = 0;
+    let productInFlashSale = null;
+    let originalPrice = 0;
+    if (flashSale) {
+      productInFlashSale = flashSale.products.find(
+        (p) => p.sku_id.toString() === sku_id.toString()
+      );
+      if (productInFlashSale) {
+        // flashSalePrice = productInFlashSale.price;
+        flashSaleQuantity = Math.min(productInFlashSale.stock, quantity);
+        normalQuantity = quantity - flashSaleQuantity;
+        flashSalePrice = productInFlashSale.sale_price;
+        originalPrice = productInFlashSale.original_price;
+      }
+    }
+    const operations = [];
+    if (flashSaleQuantity > 0) {
+      const flashSaleProduct = {
+        ...product,
+        quantity: flashSaleQuantity,
+        price: flashSalePrice,
+      };
+      operations.push(flashSaleProduct);
+    }
+    if (normalQuantity > 0) {
+      const normalProduct = {
+        ...product,
+        quantity: normalQuantity,
+        price: originalPrice || product.price,
+      };
+      operations.push(normalProduct);
+    }
     // Nếu chưa có giỏ hàng hoặc giỏ hàng trống, tạo mới
     if (!userCart || !userCart.cart_products.length) {
-      return await createUserCart({ userId, product });
+      return await createUserCart({ userId, operations });
     }
     // Kiểm tra sản phẩm đã tồn tại trong giỏ hàng chưa
     const existingProduct = userCart.cart_products.find(
@@ -79,7 +122,7 @@ const addToCartService = async ({ userId, product }) => {
       return await updateUserCartQuantity({ userId, product });
     } else {
       // Nếu sản phẩm chưa tồn tại, thêm mới vào giỏ hàng
-      return await createUserCart({ userId, product });
+      return await createUserCart({ userId, operations });
     }
   } catch (error) {
     throw new Error("Lỗi khi thêm sản phẩm vào giỏ hàng: " + error.message);
@@ -125,15 +168,23 @@ const updateCartService = async ({ userId, shop_order_ids }) => {
   });
 };
 
-const deleteUserCartService = async ({ userId, sku_id }) => {
+const deleteUserCartService = async ({ userId, sku_id, price }) => {
+  sku_id = Array.isArray(sku_id) ? sku_id : [sku_id];
+  price = Array.isArray(price) ? price : [price];
   const deleted = await Cart.updateOne(
     {
       cart_userId: new Types.ObjectId(userId),
       cart_state: "active",
+      cart_products: {
+        $elemMatch: {
+          sku_id: { $in: sku_id },
+          price: { $in: price },
+        },
+      },
     },
     {
       $pull: {
-        cart_products: { sku_id },
+        cart_products: { sku_id: { $in: sku_id }, price: { $in: price } },
       },
     }
   );
@@ -166,10 +217,34 @@ const getListUserCartService = async ({ userId }) => {
       },
     },
   ]);
-  const totalAmount = await amount.reduce(
-    (total, item) => total + Number(item.price) * Number(item.quantity),
-    0
-  );
+  // const totalAmount = await amount.reduce(
+  //   (total, item) => total + Number(item.price) * Number(item.quantity),
+  //   0
+  // );
+  const totalAmount = await Cart.aggregate([
+    { $match: { cart_userId: new Types.ObjectId(userId) } },
+    { $unwind: "$cart_products" },
+    {
+      $lookup: {
+        from: "products", // hoặc 'skus' nếu lưu giá ở SKU
+        localField: "cart_products.productId",
+        foreignField: "_id",
+        as: "product_info",
+      },
+    },
+    { $unwind: "$product_info" },
+    {
+      $group: {
+        _id: null,
+        totalPrice: {
+          $sum: {
+            $multiply: ["$product_info.price", "$cart_products.quantity"],
+          },
+        },
+      },
+    },
+  ]);
+
   const carts = await Cart.findOne({
     cart_userId: new Types.ObjectId(userId),
   }).lean();

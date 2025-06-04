@@ -38,7 +38,235 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+  // const lowSaleSku = await SKU.aggregate([
+  //   {
+  //     $lookup: {
+  //       from: "orders",
+  //       let: { skuId: "$sku_id" },
+  //       pipeline: [
+  //         {
+  //           $match: {
+  //             createdAt: { $lt: thirtyDaysAgo },
+  //             order_status: "completed",
+  //           },
+  //         },
+  //         {
+  //           $unwind: "$order_products",
+  //         },
+  //         {
+  //           $unwind: "$order_products.item_products",
+  //         },
+  //         {
+  //           $match: {
+  //             $expr: {
+  //               $eq: ["$order_products.item_products.skuId", "$$skuId"],
+  //             },
+  //           },
+  //         },
+  //       ],
+  //       as: "oldSales",
+  //     },
+  //   },
+  //   {
+  //     $addFields: {
+  //       oldSaleCount: { $size: "$oldSales" },
+  //       totalQuantitySold: {
+  //         $sum: {
+  //           $map: {
+  //             input: "$oldSales",
+  //             as: "sale",
+  //             in: {
+  //               $ifNull: ["$$sale.order_products.item_products.quantity", 0],
+  //             },
+  //           },
+  //         },
+  //       },
+  //     },
+  //   },
+  //   {
+  //     $match: {
+  //       oldSaleCount: { $lte: 3 },
+  //     },
+  //   },
+  //   {
+  //     $lookup: {
+  //       from: "products",
+  //       localField: "product_id",
+  //       foreignField: "_id",
+  //       as: "product",
+  //     },
+  //   },
+  //   {
+  //     $unwind: "$product",
+  //   },
+  //   {
+  //     $match: {
+  //       sku_status: "published",
+  //       sku_price_sale: { $ne: 0 },
+  //       $expr: {
+  //         $eq: ["$sku_price_sale", "$sku_price"],
+  //       },
+  //     },
+  //   },
+  //   {
+  //     $lookup: {
+  //       from: "inventories",
+  //       localField: "sku_id",
+  //       foreignField: "inven_skuId",
+  //       as: "inventory",
+  //     },
+  //   },
+  //   {
+  //     $unwind: "$inventory",
+  //   },
+  //   {
+  //     $project: {
+  //       product_id: "$product._id",
+  //       skuId: "$sku_id",
+  //       sku_name: "$sku_name",
+  //       product_name: "$product.product_name",
+  //       attributes: {
+  //         color: {
+  //           $arrayElemAt: [
+  //             "$product.product_variations.0.options",
+  //             { $arrayElemAt: ["$sku_tier_idx", 0] },
+  //           ],
+  //         },
+  //         size: {
+  //           $arrayElemAt: [
+  //             "$product.product_variations.1.options",
+  //             { $arrayElemAt: ["$sku_tier_idx", 1] },
+  //           ],
+  //         },
+  //       },
+  //       product_quantity: "$inventory.inven_stock",
+  //       oldSaleCount: 1,
+  //       totalQuantitySold: 1,
+  //       stockValue: {
+  //         $multiply: [
+  //           { $ifNull: ["$inventory.inven_stock", 0] },
+  //           { $ifNull: [{ $toDouble: "$sku_price" }, 0] },
+  //         ],
+  //       },
+  //       product_price: "$product.product_price",
+  //     },
+  //   },
+  // ]);
   const lowSaleSku = await SKU.aggregate([
+    {
+      $lookup: {
+        from: "orders",
+        let: { skuId: "$sku_id" },
+        pipeline: [
+          {
+            $match: {
+              createdAt: { $gte: thirtyDaysAgo },
+              order_status: {
+                $nin: ["cancelled", "pending", "failed", "refunded"],
+              },
+            },
+          },
+          {
+            $unwind: "$order_products",
+          },
+          { $unwind: "$order_products.item_products" },
+          {
+            $match: {
+              $expr: {
+                $eq: ["$order_products.item_products.skuId", "$$skuId"],
+              },
+            },
+          },
+          {
+            $project: {
+              quantity: "$order_products.item_products.quantity",
+            },
+          },
+        ],
+        as: "recentSales",
+      },
+    },
+    {
+      $addFields: {
+        oldSaleCount: { $size: "$recentSales" },
+        totalQuantitySold: {
+          $sum: "$recentSales.quantity",
+        },
+      },
+    },
+    {
+      $match: {
+        oldSaleCount: { $lte: 3 },
+        sku_status: "published",
+        $expr: {
+          $or: [
+            { $eq: ["$sku_price_sale", 0] },
+            { $eq: ["$sku_price_sale", "$sku_price"] },
+          ],
+        },
+      },
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "product_id",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    {
+      $unwind: "$product",
+    },
+    {
+      $lookup: {
+        from: "inventories",
+        localField: "sku_id",
+        foreignField: "inven_skuId",
+        as: "inventory",
+      },
+    },
+    {
+      $unwind: "$inventory",
+    },
+    {
+      $project: {
+        skuId: "$sku_id",
+        product_name: "$product.product_name",
+        attributes: {
+          color: {
+            $arrayElemAt: [
+              "$product.product_variations.0.options",
+              { $arrayElemAt: ["$sku_tier_idx", 0] },
+            ],
+          },
+          size: {
+            $arrayElemAt: [
+              "$product.product_variations.1.options",
+              { $arrayElemAt: ["$sku_tier_idx", 1] },
+            ],
+          },
+        },
+        product_quantity: "$inventory.inven_stock",
+        oldSaleCount: 1,
+        totalQuantitySold: 1,
+        stockValue: {
+          $multiply: [
+            { $ifNull: ["$inventory.inven_stock", 0] },
+            { $ifNull: [{ $toDouble: "$sku_price" }, 0] },
+          ],
+        },
+        product_price: "$sku_price",
+        sku_name: "$sku_name",
+      },
+    },
+    {
+      $sort: { totalQuantitySold: -1 },
+    },
+    {
+      $limit: 10,
+    },
+  ]);
+  const topSellingSku = await SKU.aggregate([
     {
       $lookup: {
         from: "orders",
@@ -64,19 +292,46 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
             },
           },
         ],
-        as: "oldSales",
+        as: "sales",
       },
     },
     {
       $addFields: {
-        oldSaleCount: { $size: "$oldSales" },
+        totalOrders: { $size: "$sales" },
         totalQuantitySold: {
           $sum: {
             $map: {
-              input: "$oldSales",
+              input: "$sales",
               as: "sale",
               in: {
                 $ifNull: ["$$sale.order_products.item_products.quantity", 0],
+              },
+            },
+          },
+        },
+        totalRevenue: {
+          $sum: {
+            $map: {
+              input: "$sales",
+              as: "sale",
+              in: {
+                $multiply: [
+                  {
+                    $ifNull: [
+                      "$$sale.order_products.item_products.quantity",
+                      0,
+                    ],
+                  },
+                  {
+                    $ifNull: [
+                      {
+                        $toDouble:
+                          "$$sale.order_products.item_products.price",
+                      },
+                      0,
+                    ],
+                  },
+                ],
               },
             },
           },
@@ -85,7 +340,7 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
     },
     {
       $match: {
-        oldSaleCount: { $lte: 3 },
+        totalOrders: { $gt: 0 },
       },
     },
     {
@@ -100,15 +355,6 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
       $unwind: "$product",
     },
     {
-      $match: {
-        sku_status: "published",
-        sku_price_sale: { $ne: 0 },
-        $expr: {
-          $eq: ["$sku_price_sale", "$sku_price"],
-        },
-      },
-    },
-    {
       $lookup: {
         from: "inventories",
         localField: "sku_id",
@@ -121,9 +367,7 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
     },
     {
       $project: {
-        product_id: "$product._id",
         skuId: "$sku_id",
-        sku_name: "$sku_name",
         product_name: "$product.product_name",
         attributes: {
           color: {
@@ -139,20 +383,26 @@ const getLowSaleProductsService = async ({ page = 1, limit = 10 }) => {
             ],
           },
         },
-        product_quantity: "$inventory.inven_stock",
-        oldSaleCount: 1,
+        stock: "$inventory.inven_stock",
+        totalOrders: 1,
         totalQuantitySold: 1,
-        stockValue: {
-          $multiply: [
-            { $ifNull: ["$inventory.inven_stock", 0] },
-            { $ifNull: [{ $toDouble: "$sku_price" }, 0] },
+        totalRevenue: 1,
+        averageOrderValue: {
+          $cond: [
+            { $eq: ["$totalOrders", 0] },
+            0,
+            { $divide: ["$totalRevenue", "$totalOrders"] },
           ],
         },
-        product_price: "$product.product_price",
       },
     },
+    {
+      $sort: { totalQuantitySold: -1 },
+    },
+    {
+      $limit: +limit,
+    },
   ]);
-
   const total = lowSaleSku.length;
   const skip = (page - 1) * limit;
   const paginatedData = lowSaleSku.slice(skip, skip + limit);

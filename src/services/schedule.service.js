@@ -7,6 +7,9 @@ const Notification = require("../models/notification.model");
 const SKU = require("../models/sku.model");
 const { producer } = require("./rabbitMQ.service");
 const { sendMail } = require("./nodemailer.service");
+const Banner = require("../models/banner.model");
+const { randomFlashSaleId } = require("../utils");
+const { Types } = require("mongoose");
 
 class ScheduleService {
   constructor() {
@@ -18,6 +21,8 @@ class ScheduleService {
     cron.schedule("* * * * *", async () => {
       try {
         await this.updateFlashSalePrices();
+        await this.updateExpiredDiscounts();
+        await this.updateActiveDiscounts();
       } catch (error) {
         console.error("Error updating flash sale prices:", error);
       }
@@ -83,13 +88,19 @@ class ScheduleService {
         const notification = await Notification.create({
           user_id: user._id,
           title: "Chúc mừng sinh nhật!",
-          content: `Fashora chúc quý khách sinh nhật vui vẻ, Chúc mừng sinh nhật ${
+          notify_content: `Fashora chúc quý khách sinh nhật vui vẻ, Chúc mừng sinh nhật ${
             user.usr_full_name
           }. Fashora gửi tặng bạn 1 voucher giảm giá 10% đối với tất cả sản phẩm (áp dụng đến hết ngày ${voucherEndDate.toLocaleDateString(
             "vi-VN"
           )})`,
           type: "birthday",
           is_read: false,
+          notify_receiverId: user._id,
+          notify_senderId: "675c6f050288fb66c0edfb0d",
+          notify_type: "birthday",
+          notify_status: "active",
+          notify_createdAt: today,
+          notify_updatedAt: today,
         });
         // gui mail chuc mung sinh nhat
         await sendMail({
@@ -118,7 +129,18 @@ class ScheduleService {
   async updateFlashSalePrices() {
     const now = new Date();
 
-    // Tìm các flashsale đang bắt đầu
+    try {
+      // Xử lý các flashsale đang bắt đầu
+      await this.handleActiveFlashSales(now);
+
+      // Xử lý các flashsale đã kết thúc
+      await this.handleEndedFlashSales(now);
+    } catch (error) {
+      console.error("Error in updateFlashSalePrices:", error);
+    }
+  }
+
+  async handleActiveFlashSales(now) {
     const activeFlashSales = await FlashSale.find({
       start_time: { $lte: now },
       end_time: { $gt: now },
@@ -126,75 +148,131 @@ class ScheduleService {
       isApproved: true,
     });
 
-    for (const flashSale of activeFlashSales) {
-      try {
-        // Cập nhật giá và thông tin flashsale cho từng sản phẩm
-        for (const product of flashSale.products) {
-          await SKU.findOneAndUpdate(
-            { sku_id: product.sku_id },
-            {
-              $set: {
-                sku_price_sale: product.sale_price,
-              },
-            }
-          );
-          const foundProduct = await Product.findOne({
-            _id: product.product_id,
-          });
-          if (foundProduct) {
-            const foundModel = foundProduct.product_models.find(
-              (model) => model.sku_id === product.sku_id
-            );
-            if (foundModel) {
-              foundModel.sku_price_sale = product.sale_price;
-            }
-          }
-          await foundProduct.save();
+    await Promise.all(
+      activeFlashSales.map(async (flashSale) => {
+        try {
+          await this.activateFlashSale(flashSale);
+        } catch (error) {
+          console.error(`Error activating flash sale ${flashSale.id}:`, error);
         }
-        await FlashSale.findByIdAndUpdate(flashSale._id, {
-          status: "ongoing",
-        });
-        console.log(`Flash sale ${flashSale.id} has been activated`);
-      } catch (error) {
-        console.error(`Error activating flash sale ${flashSale.id}:`, error);
-      }
-    }
+      })
+    );
+  }
 
-    // Kiểm tra và cập nhật các flashsale đã kết thúc
+  async handleEndedFlashSales(now) {
     const endedFlashSales = await FlashSale.find({
       end_time: { $lt: now },
       status: "ongoing",
     });
 
-    for (const flashSale of endedFlashSales) {
-      try {
-        // Reset thông tin flashsale cho các sản phẩm
-        for (const product of flashSale.products) {
-          await Product.findOneAndUpdate(
-            { id: product.product_id },
-            {
-              $set: {
-                is_flash_sale: false,
-                flash_sale_price: null,
-                flash_sale_stock: null,
-                flash_sale_limit: null,
-                flash_sale_sold: null,
-                flash_sale_id: null,
-              },
-            }
-          );
+    await Promise.all(
+      endedFlashSales.map(async (flashSale) => {
+        try {
+          await this.deactivateFlashSale(flashSale);
+        } catch (error) {
+          console.error(`Error ending flash sale ${flashSale.id}:`, error);
         }
+      })
+    );
+  }
 
-        // Cập nhật trạng thái flashsale
-        await FlashSale.findByIdAndUpdate(flashSale._id, {
-          status: "ended",
-        });
+  async activateFlashSale(flashSale) {
+    // Cập nhật thông tin cho tất cả sản phẩm trong flashsale
+    await Promise.all(
+      flashSale.products.map(async (product) => {
+        await this.updateProductFlashSaleInfo(product, flashSale, true);
+      })
+    );
 
-        console.log(`Flash sale ${flashSale.id} has ended`);
-      } catch (error) {
-        console.error(`Error ending flash sale ${flashSale.id}:`, error);
+    // Cập nhật trạng thái flashsale
+    await FlashSale.findByIdAndUpdate(flashSale._id, {
+      status: "ongoing",
+    });
+    await Banner.create({
+      id: flashSale.id,
+      title: flashSale.name,
+      thumb: flashSale.thumb,
+      linkTo: flashSale.id,
+      isActive: true,
+      startDate: flashSale.start_time,
+      endDate: flashSale.end_time,
+    });
+    console.log(`Flash sale ${flashSale.id} has been activated`);
+  }
+
+  async deactivateFlashSale(flashSale) {
+    // Reset thông tin cho tất cả sản phẩm trong flashsale
+    await Promise.all(
+      flashSale.products.map(async (product) => {
+        await this.updateProductFlashSaleInfo(product, flashSale, false);
+      })
+    );
+
+    // Cập nhật trạng thái flashsale
+    await FlashSale.findByIdAndUpdate(flashSale._id, {
+      status: "ended",
+    });
+    await Banner.findOneAndUpdate(
+      {
+        id: flashSale.id,
+      },
+      {
+        isActive: false,
       }
-    }
+    );
+    console.log(`Flash sale ${flashSale.id} has ended`);
+  }
+
+  async updateProductFlashSaleInfo(product, flashSale, isActivating) {
+    // Cập nhật thông tin SKU
+    await this.updateSKUFlashSaleInfo(product, flashSale, isActivating);
+
+    // Cập nhật thông tin Product
+    await this.updateProductModelFlashSaleInfo(
+      product,
+      flashSale,
+      isActivating
+    );
+  }
+
+  async updateSKUFlashSaleInfo(product, flashSale, isActivating) {
+    const updateData = isActivating
+      ? {
+          sku_price_sale: product.sale_price,
+        }
+      : {
+          sku_price_sale: 0,
+        };
+
+    await SKU.findOneAndUpdate(
+      { sku_id: product.sku_id },
+      { $set: updateData }
+    );
+  }
+
+  async updateProductModelFlashSaleInfo(product, flashSale, isActivating) {
+    const foundProduct = await Product.findOne({
+      _id: new Types.ObjectId(product.product_id),
+    });
+
+    if (!foundProduct) return;
+    await Product.updateOne(
+      { _id: product.product_id, "product_models.sku_id": product.sku_id },
+      {
+        $set: {
+          product_seller: product.sale_price,
+          "product_models.$.sku_price_sale": isActivating
+            ? product.sale_price
+            : 0,
+          is_flash_sale: isActivating,
+          flash_sale_id: isActivating ? flashSale.id : null,
+          flash_sale_name: isActivating ? flashSale.name : null,
+          flash_sale_thumb: isActivating ? flashSale.thumb : null,
+          flash_sale_start_time: isActivating ? flashSale.start_time : null,
+          flash_sale_end_time: isActivating ? flashSale.end_time : null,
+        },
+      }
+    );
   }
 
   async updateDiscountStatus() {
@@ -213,6 +291,50 @@ class ScheduleService {
     //     discount_status: "expired",
     //   });
     // }
+    console.log(`Updated ${expiredDiscounts.length} expired discounts`);
+  }
+  async updateFlashSaleSold(productId, quantity) {
+    const activeFlashSale = await FlashSale.findOne({
+      products: { $elemMatch: { productId: productId } },
+      status: "ongoing",
+    });
+
+    if (activeFlashSale) {
+      const productInFlashSale = activeFlashSale.products.find(
+        (product) => product.product_id.toString() === productId.toString()
+      );
+
+      if (productInFlashSale) {
+        productInFlashSale.sold += quantity;
+        await activeFlashSale.save();
+      }
+    }
+  }
+  // update expired discount
+  async updateExpiredDiscounts() {
+    const now = new Date();
+    const expiredDiscounts = await Discount.find({
+      discount_end_date: { $lt: now },
+      discount_status: "active",
+    });
+    if (!expiredDiscounts) return;
+    await Discount.updateMany(
+      { _id: { $in: expiredDiscounts.map((discount) => discount._id) } },
+      { discount_status: "expired" }
+    );
+    console.log(`Updated ${expiredDiscounts.length} expired discounts`);
+  }
+  async updateActiveDiscounts() {
+    const now = new Date();
+    const expiredDiscounts = await Discount.find({
+      discount_start_date: { $lt: now },
+      discount_status: "pending",
+    });
+    if (!expiredDiscounts) return;
+    await Discount.updateMany(
+      { _id: { $in: expiredDiscounts.map((discount) => discount._id) } },
+      { discount_status: "active" }
+    );
     console.log(`Updated ${expiredDiscounts.length} expired discounts`);
   }
 }

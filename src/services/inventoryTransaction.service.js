@@ -5,6 +5,7 @@ const { addStockToInventory } = require("./inventory.service");
 const { NotFoundError } = require("../core/error.response");
 const Product = require("../models/product.model");
 const Sku = require("../models/sku.model");
+const FlashSale = require('../models/flashsale.model');
 const { Types, default: mongoose } = require("mongoose");
 const createInventoryTransactionService = async ({
   transaction_shopId,
@@ -46,7 +47,7 @@ const createInventoryTransactionService = async ({
       },
       {
         $inc: {
-          product_sold: -stockChange,
+          product_sold: transaction_type === "created" ? 0 : -stockChange,
           product_quantity: transaction_type === "created" ? 0 : stockChange,
           "product_models.$.sku_stock":
             transaction_type === "created" ? 0 : stockChange,
@@ -71,6 +72,21 @@ const createInventoryTransactionService = async ({
         }
       );
     }
+    // update product_sold in flashsale
+      await FlashSale.updateOne({
+        status: "ongoing",
+        products: {
+          $elemMatch: {
+            sku_id: transaction_skuId,
+          },
+        },
+      }, {
+        $inc: {
+            "products.$.sold": -stockChange,
+            "products.$.stock": stockChange,
+          },
+        }
+      );
     // create inventory transaction
     const newInventoryTransaction = new InventoryTransaction({
       transaction_shopId,

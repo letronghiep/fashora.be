@@ -85,12 +85,12 @@ const createUserService = async ({
     await pushNotifyToSystem({
       notify_content: notify_content,
       notify_type: "USER-001",
-      senderId: newUser.usr_id,
+      senderId: '675c6f050288fb66c0edfb0d',
       options: {
         // link:
         // shorten Url or link product
       },
-      receiverId: newUser.usr_id,
+      receiverId: newUser._id,
     });
     return newUser ? newUser : null;
   } catch (error) {
@@ -148,12 +148,12 @@ const updateUserService = async ({
   await pushNotifyToSystem({
     notify_content: notify_content,
     notify_type: "USER-002", 
-    senderId: usr_id,
+    senderId: '675c6f050288fb66c0edfb0d',
     options: {
       // link:
       // shorten Url or link product
     },
-    receiverId: usr_id,
+    receiverId: _id,
   });
   return data;
 };

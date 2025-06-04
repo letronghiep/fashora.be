@@ -1,13 +1,17 @@
 "use strict";
 const Order = require("../models/order.model");
 const Sku = require("../models/sku.model");
+const Discount = require("../models/discount.model");
 const { BadRequestError } = require("../core/error.response");
 const {} = require("../core/success.response");
 const { findCartById } = require("../models/repo/cart.repo");
 const { checkProductByServer } = require("../models/repo/product.repo");
 const { getDiscountAmount } = require("../controllers/discount.controller");
-const { acquireLock, releaseLock } = require("../services/redis.service");
+// const { acquireLock, releaseLock } = require("../services/redis.service");
 const { deleteUserCartService } = require("./cart.service");
+const { pushNotifyToSystem } = require("./notification.service");
+const { getIO } = require("../db/init.socket");
+
 const { producer } = require("./rabbitMQ.service");
 const {
   getOrderByUserList,
@@ -26,7 +30,7 @@ const {
   createInventoryTransactionService,
 } = require("./inventoryTransaction.service");
 const config = {
-  app_id: "2553",
+  app_id: 2553,
   key1: "PcY4iZIKFCIdgZvA6ueMcMHHUbRLYjPL",
   key2: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz",
   endpoint: "https://sb-openapi.zalopay.vn/v2/create",
@@ -89,12 +93,8 @@ const checkoutReviewService = async ({
     feeShip: 0, // phi van chuyen
     totalDiscount: 0, // tong giam gia
     totalCheckout: 0, // tong thanh toan
+    discountCode: null,
   };
-  if (payment_method === "BANK") {
-    checkout_order.feeShip = 0;
-  } else {
-    checkout_order.feeShip = 30000;
-  }
   const shop_order_ids_new = [];
   // tinh tong tien bill
   // for (let i = 0; i < shop_order_ids.length; i++) {
@@ -110,10 +110,32 @@ const checkoutReviewService = async ({
   if (!checkProductServer[0]) throw new BadRequestError("order wrong!!!");
   // tong tien don hang
   const checkoutPrice = checkProductServer.reduce((acc, product) => {
-    return acc + product.quantity * product.price;
+    if (product.price_sale > 0 && product.price_sale < product.price) {
+      return acc + product.quantity * product.price_sale;
+    } else {
+      return acc + product.quantity * product.price;
+    }
   }, 0);
   // tong tien truoc xu li
   checkout_order.totalPrice = +checkoutPrice;
+  if (payment_method === "BANK") {
+    checkout_order.feeShip = 0;
+  } else {
+    if (payment_method === "BANK") {
+      checkout_order.feeShip = 0;
+    } else {
+      if (checkout_order.totalPrice < 50000) {
+        checkout_order.feeShip = 0;
+      } else if (checkout_order.totalPrice < 100000) {
+        checkout_order.feeShip = 10000;
+      } else if (checkout_order.totalPrice < 200000) {
+        checkout_order.feeShip = 20000;
+      } else {
+        checkout_order.feeShip = 30000;
+      }
+    }
+    
+  }
   checkout_order.totalCheckout = +checkoutPrice + checkout_order.feeShip;
   const itemCheckout = {
     shopId: shop_order_ids[0].shopId,
@@ -138,14 +160,16 @@ const checkoutReviewService = async ({
   //   }
   // }
   if (discount_code) {
-    const { totalPrice = 0, discount = 0 } = await getDiscountAmountService({
+    const { totalPrice, discount } = await getDiscountAmountService({
       codeId: discount_code,
       userId: userId,
       // shopId: shop_order_ids[0].shopId,`
       products: checkProductServer,
     });
     checkout_order.totalDiscount += discount;
+    checkout_order.discountCode = discount_code;
     if (discount > 0) {
+      checkout_order.totalDiscount = discount;
       itemCheckout.priceApplyDiscount = checkoutPrice - discount;
       checkout_order.totalCheckout =
         itemCheckout.priceApplyDiscount + checkout_order.feeShip;
@@ -166,11 +190,13 @@ const orderByUserService = async ({
   userId,
   user_address,
   user_payment,
+  discount_code,
 }) => {
   const { shop_order_ids_new, checkout_order } = await checkoutReviewService({
     cartId,
     userId,
     shop_order_ids,
+    discount_code,
   });
   // check lai mot lan nua xem vuot ton kho hay khong
   // get new array product
@@ -199,25 +225,38 @@ const orderByUserService = async ({
     order_shipping: user_address,
     order_payment: user_payment,
     order_products: shop_order_ids_new,
+    order_trackingNumber: "#000" + Math.random().toString(36).substring(2, 10),
   });
   if (newOrder) {
     // remove product in my cart
     await deleteUserCartService({
       userId,
-      productId: shop_order_ids_new.flatMap((order) =>
-        order.item_products.map((product) => product.productId)
+      sku_id: shop_order_ids_new.flatMap((order) =>
+        order.item_products.map((product) => product.skuId)
+      ),
+      price: shop_order_ids_new.flatMap((order) =>
+        order.item_products.map((product) => product.price)
       ),
     });
-    // update sku
-    // const skuMap = new Map();
-    // shop_order_ids_new.forEach((order) => {
-    //   order.item_products.forEach((itemProduct) => {
-    //     const key = `${itemProduct.productId}_${itemProduct.skuId}`;
-    //     const prevQuantity = skuMap.get(key) || 0;
-    //     skuMap.set(key, prevQuantity + itemProduct.quantity);
-    //   });
-    // });
-
+    // update discount
+    if (checkout_order.discountCode) {
+      await Discount.updateOne(
+        { discount_code: checkout_order.discountCode },
+        {
+          $inc: { discount_uses_count: 1 },
+          $addToSet: {
+            discount_users_used: {
+              userId: userId,
+              discount_used_count: {
+                $inc: {
+                  discount_used_count: 1,
+                },
+              },
+            },
+          },
+        }
+      );
+    }
     // for (const [key, quantity] of skuMap.entries()) {
     //   const [productId, skuId] = key.split("_");
     //   const product = await Product.findOne({
@@ -257,7 +296,8 @@ const orderByUserService = async ({
       });
     });
     await producer(JSON.stringify(newOrder), "orderQueue");
-    // io.emit("order-requirement", newOrder);
+    const io = getIO();
+    io.emit("new-order", newOrder);
     return newOrder;
   }
 };
@@ -279,7 +319,7 @@ const getOrderForAdminService = async ({
     "delivering", // Đang giao hàng
     "shipped", // Đã giao hàng
     "completed", // Hoàn tất
-    "cancelled", // Đã hủy
+    "canceled", // Đã hủy
     "returned", // Trả hàng
     "exchanged", // Đổi hàng
     "refunded", // Đã hoàn tiền
@@ -416,13 +456,22 @@ const cancelOrderService = async ({ orderId, userId, shopId }) => {
 };
 const updateStatusOrderService = async ({ order_status, userId, orderId }) => {
   const query = {
-      order_userId: userId,
+      // order_userId: userId,
       _id: orderId,
     },
     updateSet = {
       order_status: order_status,
     };
   const { modifiedCount } = await Order.updateOne(query, updateSet);
+  if (modifiedCount === 0) throw new BadRequestError("Đơn hàng không tồn tại");
+  const orderDetail = await Order.findOne(query).lean();
+  await pushNotifyToSystem({
+    type: "ORDER-002",
+    receiverId: "675c6f050288fb66c0edfb0d",
+    senderId: orderDetail.order_userId,
+    notify_content: `Đơn hàng #${orderDetail.order_trackingNumber} đã được xác nhận`,
+    options: {},
+  });
   return modifiedCount;
 };
 
@@ -431,16 +480,39 @@ const exportOrderToCSVService = async ({ userId, filter = {} }) => {
     const { order_status, startDate, endDate } = filter;
 
     const validStatuses = [
-      "pending",
-      "canceled",
-      "delivered",
-      "confirmed",
-      "shipped",
+      "pending", // Chờ xác nhận
+      "confirmed", // Đã xác nhận
+      "processing", // Đang xử lý
+      "packed", // Đã đóng gói
+      "delivering", // Đang giao hàng
+      "shipped", // Đã giao hàng
+      "completed", // Hoàn tất
+      "canceled", // Đã hủy
+      "returned", // Trả hàng
+      "exchanged", // Đổi hàng
+      "refunded", // Đã hoàn tiền
+      "failed_delivery", // Giao hàng thất bại
+      "on_hold", // Đơn bị treo
     ];
+    const statusName = {
+      pending: "Chờ xác nhận",
+      confirmed: "Đã xác nhận",
+      processing: "Đang xử lý",
+      packed: "Đã đóng gói",
+      delivering: "Đang giao hàng",
+      shipped: "Đã giao hàng",
+      completed: "Hoàn tất",
+      canceled: "Đã hủy",
+      returned: "Trả hàng",
+      exchanged: "Đổi hàng",
+      refunded: "Đã hoàn tiền",
+      failed_delivery: "Giao hàng thất bại",
+      on_hold: "Đơn bị treo",
+    };
     const isValidStatus = validStatuses.includes(order_status);
 
     const filterQuery = {
-      order_userId: new Types.ObjectId(userId),
+      // order_userId: new Types.ObjectId(userId),
       ...(isValidStatus && { order_status }),
     };
 
@@ -476,13 +548,13 @@ const exportOrderToCSVService = async ({ userId, filter = {} }) => {
 
     const rows = orders.map((order) => {
       const shippingAddress = order.order_shipping
-        ? `${order.order_shipping.street}, ${order.order_shipping.city}, ${order.order_shipping.state}, ${order.order_shipping.country}`
+        ? `${order.order_shipping}`
         : "";
 
       const totalPrice = order.order_checkout?.totalPrice || 0;
-      const discount = order.order_checkout?.totalApplyDiscount || 0;
+      const discount = order.order_checkout?.totalDiscount || 0;
       const feeShip = order.order_checkout?.feeShip || 0;
-      const finalPrice = totalPrice - discount + feeShip;
+      const finalPrice = order.order_checkout?.totalCheckout || 0;
 
       return [
         order.order_id,
@@ -495,7 +567,7 @@ const exportOrderToCSVService = async ({ userId, filter = {} }) => {
         finalPrice,
         shippingAddress,
         order.order_payment?.paymentMethod || "",
-        order.order_status,
+        statusName[order.order_status],
         order.order_trackingNumber || "",
         new Date(order.createdAt).toLocaleString(),
         new Date(order.updatedAt).toLocaleString(),
@@ -526,68 +598,80 @@ const createCheckoutOnlineService = async ({
   userId,
   user_address,
   user_payment,
+  discount_code,
 }) => {
-  const embed_data = {
-    user_address: JSON.stringify(user_address),
-    user_payment: JSON.stringify(user_payment),
-    cart_id: cartId,
-
-    //sau khi hoàn tất thanh toán sẽ đi vào link này (thường là link web thanh toán thành công của mình)
-    redirecturl: process.env.REDIRECT_URL_FE + "/checkout/success",
-  };
-  const { shop_order_ids_new, checkout_order } = await checkoutReviewService({
-    cartId,
-    userId,
-    shop_order_ids,
-    payment_method: "BANK",
-  });
-  const transID = Math.floor(Math.random() * 1000000);
-  const order = {
-    app_id: config.app_id,
-    app_trans_id: `${moment().format("YYMMDD")}_${transID}`, // translation missing: vi.docs.shared.sample_code.comments.app_trans_id
-    app_user: userId,
-    app_time: Date.now(), // miliseconds
-    item: JSON.stringify(shop_order_ids),
-    embed_data: JSON.stringify(embed_data),
-    amount: checkout_order?.totalPrice,
-    user_fee_amount: checkout_order?.totalPrice,
-    description: `Lazada - Payment for the order #${transID}`,
-    bank_code: "",
-    callback_url: process.env.NGROK_URL + "/v1/api/checkout/callback",
-  };
-
-  // appid|app_trans_id|appuser|amount|apptime|embeddata|item
-  const data =
-    config.app_id +
-    "|" +
-    order.app_trans_id +
-    "|" +
-    order.app_user +
-    "|" +
-    order.amount +
-    "|" +
-    order.app_time +
-    "|" +
-    order.embed_data +
-    "|" +
-    order.item;
-  order.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
-
   try {
+    const embed_data = {
+      user_address: JSON.stringify(user_address),
+      user_payment: JSON.stringify(user_payment),
+      cart_id: cartId,
+      redirecturl: process.env.REDIRECT_URL_FE + "/checkout/success",
+      discount_code,
+    };
+
+    const { shop_order_ids_new, checkout_order } = await checkoutReviewService({
+      cartId,
+      userId,
+      shop_order_ids,
+      payment_method: "BANK",
+      discount_code,
+    });
+
+    if (!checkout_order || !checkout_order.totalPrice) {
+      throw new Error("Invalid checkout order data");
+    }
+
+    const transID = Math.floor(Math.random() * 1000000);
+    const order = {
+      app_id: config.app_id,
+      app_trans_id: `${moment().format("YYMMDD")}_${transID}`,
+      app_user: userId,
+      app_time: Date.now(),
+      item: JSON.stringify(shop_order_ids),
+      embed_data: JSON.stringify(embed_data),
+      amount: checkout_order.totalPrice,
+      user_fee_amount: checkout_order.totalPrice,
+      description: `Fashora - Payment for the order #${transID}`,
+      bank_code: "",
+      callback_url: process.env.NGROK_URL + "/v1/api/checkout/callback",
+    };
+
+    // appid|app_trans_id|appuser|amount|apptime|embeddata|item
+    const data =
+      config.app_id +
+      "|" +
+      order.app_trans_id +
+      "|" +
+      order.app_user +
+      "|" +
+      order.amount +
+      "|" +
+      order.app_time +
+      "|" +
+      order.embed_data +
+      "|" +
+      order.item;
+
+    order.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
     const result = await axios.post(
       config.endpoint,
       null,
-      { params: order },
-      {
+      { 
+        params: order,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       }
     );
 
+    if (!result.data || result.data.return_code !== 1) {
+      throw new Error(`ZaloPay API error: ${result.data?.return_message || 'Unknown error'}`);
+    }
+
     return result.data;
   } catch (error) {
-    console.log(error);
+    console.error("Error in createCheckoutOnlineService:", error);
+    throw new Error(`Failed to create ZaloPay payment: ${error.message}`);
   }
 };
 const callbackZaloPayService = async ({ data, mac }) => {
@@ -605,13 +689,10 @@ const callbackZaloPayService = async ({ data, mac }) => {
       // merchant cập nhật trạng thái cho đơn hàng
       let dataJson = JSON.parse(dataStr, config.key2);
       const embed_data = JSON.parse(dataJson.embed_data);
-      console.log(
-        "update order's status = success where app_trans_id =",
-        dataJson
-      );
       const shop_order_ids = JSON.parse(dataJson.item);
       const cartId = embed_data.cart_id;
       const userId = dataJson.app_user;
+      // const discount_code = embed_data.discount_code;
       const { shop_order_ids_new, checkout_order } =
         await checkoutReviewService({
           cartId,
@@ -666,13 +747,15 @@ const callbackZaloPayService = async ({ data, mac }) => {
               transaction_productId: itemProduct.productId,
               transaction_quantity: itemProduct.quantity,
               transaction_skuId: itemProduct.skuId,
-              transaction_shopId: itemProduct.shopId,
+              transaction_shopId: order.shopId,
               transaction_userId: userId,
               transaction_note: `Thanh toán đơn hàng #${newOrder.order_id}`,
             });
           });
         });
         await producer(JSON.stringify(newOrder), "orderQueue");
+        const io = getIO();
+        io.emit("new-order", newOrder);
         // io.emit("order-requirement", newOrder);
         await newOrder.save();
       }
@@ -684,7 +767,6 @@ const callbackZaloPayService = async ({ data, mac }) => {
   } catch (ex) {
     result.return_code = 0; // ZaloPay server sẽ callback lại (tối đa 3 lần)
     result.return_message = ex.message;
-    console.log(ex);
   }
 };
 module.exports = {

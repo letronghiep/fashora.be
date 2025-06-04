@@ -1,7 +1,7 @@
 "use strict";
 
 const { CACHE_ORDER } = require("../../configs/constant");
-const { getCacheIO, setCacheIOExpiration } = require("./cache.repo");
+// const { getCacheIO, setCacheIOExpiration } = require("./cache.repo");
 const Order = require("../order.model");
 const { paginate } = require("../../helpers/paginate");
 const { Types } = require("mongoose");

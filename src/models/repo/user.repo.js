@@ -2,7 +2,7 @@ const { CACHE_ADMIN } = require("../../configs/constant");
 const User = require("../user.model");
 // const {}
 const _ = require("lodash");
-const { getCacheIO, setCacheIOExpiration } = require("./cache.repo");
+// const { getCacheIO, setCacheIOExpiration } = require("./cache.repo");
 const { paginate } = require("../../helpers/paginate");
 const getListUser = async ({ limit, sort, page, filter }) => {
   const skip = (page - 1) * limit;
@@ -28,17 +28,17 @@ const findOneUser = async (filter) => {
 };
 const getAdmin = async () => {
   const cacheAdmin = `${CACHE_ADMIN.ADMIN}`;
-  let idAdmin = await getCacheIO({ key: cacheAdmin });
+  let idAdmin;
   if (idAdmin) {
     return JSON.parse(idAdmin);
   } else {
     const admin = await User.findOne({ usr_id: 0 });
     if (admin) {
-      await setCacheIOExpiration({
-        key: cacheAdmin,
-        value: JSON.stringify(admin._id),
-        expirationInSecond: 3600,
-      });
+      // await setCacheIOExpiration({
+      //   key: cacheAdmin,
+      //   value: JSON.stringify(admin._id),
+      //   expirationInSecond: 3600,
+      // });
       return admin._id;
     } else return null;
   }

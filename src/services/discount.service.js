@@ -40,10 +40,7 @@ const createDiscountService = async (payload) => {
       discount_applies_to,
       discount_product_ids,
     } = payload;
-    if (
-      new Date() < new Date(discount_start_date) ||
-      new Date() > new Date(discount_end_date)
-    )
+    if (new Date() > new Date(discount_end_date))
       throw new BadRequestError("Discount code has expired!");
     if (new Date(discount_start_date) > new Date(discount_end_date))
       throw new BadRequestError("Start date must be less than end date");
@@ -86,6 +83,7 @@ const getAllDiscountCodeService = async ({
   userId,
   limit,
   page,
+  // discount_product_ids,
 }) => {
   const foundDiscount = await checkDiscountExists({
     filter: {
@@ -124,47 +122,129 @@ const getAllDiscountCodeService = async ({
   return products;
 };
 
+// const getAllDiscountCodeByShopService = async ({
+//   limit = 10,
+//   page = 1,
+
+//   shopId,
+//   q,
+//   discount_status,
+//   discount_product_ids,
+// }) => {
+//   const searchText = q
+//     ? {
+//         $or: [
+//           { discount_code: { $regex: q, $options: "i" } },
+//           {
+//             $expr: {
+//               $regexMatch: {
+//                 input: { $toString: "$discount_name" },
+//                 regex: q,
+//                 options: "i",
+//               },
+//             },
+//           },
+//           {
+//             $expr: {
+//               $regexMatch: {
+//                 input: { $toString: "$discount_max_uses" },
+//                 regex: q,
+//                 options: "i",
+//               },
+//             },
+//           },
+//         ],
+//       }
+//     : {};
+//   const discounts = await paginate({
+//     model: Discount,
+//     filter: {
+//       ...searchText,
+//       ...(discount_status !== "all" ? { discount_status } : {}),
+//       $or: [
+//         { discount_product_ids: { $in: discount_product_ids || [] } },
+//         { discount_applies_to: "all" },
+//       ],
+//       discount_shopId: shopId,
+//       discount_is_active: true,
+//     },
+//     limit: +limit,
+//     page: +page,
+//     sort: "ctime",
+//   });
+//   return discounts;
+// };
 const getAllDiscountCodeByShopService = async ({
   limit = 10,
   page = 1,
   shopId,
   q,
+  discount_status,
+  discount_product_ids,
 }) => {
-  const searchText = q
-    ? {
-        $or: [
-          { discount_code: { $regex: q, $options: "i" } },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $toString: "$discount_name" },
-                regex: q,
-                options: "i",
+  const searchConditions = q
+    ? [
+        {
+          $or: [
+            { discount_code: { $regex: q, $options: "i" } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $toString: "$discount_name" },
+                  regex: q,
+                  options: "i",
+                },
               },
             },
-          },
-          {
-            $expr: {
-              $regexMatch: {
-                input: { $toString: "$discount_max_uses" },
-                regex: q,
-                options: "i",
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $toString: "$discount_max_uses" },
+                  regex: q,
+                  options: "i",
+                },
               },
             },
-          },
-        ],
-      }
-    : {};
+          ],
+        },
+      ]
+    : [];
+
+  // const productConditions =
+  //   discount_product_ids && discount_product_ids.length > 0
+  //     ? [
+  //         {
+  //           $or: [
+  //             { discount_product_ids: { $in: discount_product_ids } },
+  //             { discount_applies_to: "all" },
+  //           ],
+  //         },
+  //       ]
+  //     : [];
+
+  const statusCondition =
+    discount_status !== "all"
+      ? [{ discount_status }]
+      : [];
+
+  const filterConditions = [
+    ...searchConditions,
+    // ...productConditions,
+    ...statusCondition,
+    // { discount_shopId: shopId },
+    { discount_is_active: true },
+  ];
+
   const discounts = await paginate({
     model: Discount,
     filter: {
-      ...searchText,
-      discount_shopId: shopId,
-      discount_is_active: true,
+      $and: filterConditions,
     },
     limit: +limit,
     page: +page,
+    sort: "ctime",
   });
+
   return discounts;
 };
 
@@ -194,15 +274,15 @@ const getDiscountAmountService = async ({
   } = foundDiscount;
   if (!discount_is_active) throw new BadRequestError("Discount is not already");
   if (!discount_max_uses) throw new BadRequestError("Discount are out");
-  if (
-    new Date() < new Date(discount_start_date) ||
-    new Date() > new Date(discount_end_date)
-  ) {
+  if (new Date() > new Date(discount_end_date)) {
     throw new BadRequestError("Discount code has expired!");
   }
   // check gia tri toi da
 
   const totalOrder = products.reduce((acc, product) => {
+    if (product.price_sale > 0 && product.price_sale < product.price) {
+      return acc + product.quantity * product.price_sale;
+    }
     return acc + product.quantity * product.price;
   }, 0);
   if (totalOrder < discount_min_order_value)
@@ -227,7 +307,7 @@ const getDiscountAmountService = async ({
   return {
     totalOrder,
     discount: amount,
-    totalPrice: totalOrder - amount,
+    totalPrice: totalOrder,
   };
 };
 
